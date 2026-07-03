@@ -64,6 +64,10 @@ fn test_merkle_root_management() {
     // Verify the Merkle root exists
     let roots = client.get_merkle_roots();
     assert!(roots.contains(merkle_root.clone()));
+
+    // Verify the admin add operation is indexable.
+    let events = env.events().all();
+    assert_eq!(events.len(), 1);
     
     // Test duplicate Merkle root should fail
     let result = env.try_invoke_contract::<Val, Error>(
@@ -182,6 +186,10 @@ fn test_emergency_pause_with_private_claims() {
     client.initialize_auditors(&admin, &auditors);
     client.request_emergency_pause(&auditor1, &String::from_str(&env, "Test pause"));
     client.request_emergency_pause(&auditor2, &String::from_str(&env, "Test pause"));
+
+    // Commitment, Merkle root, auditor init, two votes, and pause trigger.
+    let events = env.events().all();
+    assert_eq!(events.len(), 6);
     
     // Create ZK proof
     let zk_proof = ZKClaimProof {
