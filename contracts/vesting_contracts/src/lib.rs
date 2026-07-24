@@ -1,4 +1,19 @@
 #![no_std]
+// Safety lint attributes for smart contract
+#![deny(unsafe_code)]
+#![warn(
+    missing_docs,
+    missing_debug_implementations,
+    unused_results,
+    clippy::all,
+    clippy::pedantic,
+    clippy::correctness,
+    clippy::suspicious,
+    clippy::complexity,
+    clippy::perf
+)]
+#![allow(clippy::module_name_repetitions)]
+
 use soroban_sdk::{
     contract, contractevent, contractimpl, contracttype, token, vec, Address, BytesN, Env, IntoVal,
     String, Symbol, Vec, U256,

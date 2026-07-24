@@ -1,4 +1,14 @@
 #![no_std]
+// Safety lint attributes for smart contract
+#![deny(unsafe_code)]
+#![warn(
+    missing_docs,
+    missing_debug_implementations,
+    unused_results,
+    clippy::all,
+    clippy::pedantic
+)]
+
 /// Staking contract — holds stake records for tokens locked in vesting vaults.
 ///
 /// Tokens never arrive here. The vault calls `stake_tokens` to register a

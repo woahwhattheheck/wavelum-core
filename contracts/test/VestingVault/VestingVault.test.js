@@ -9,6 +9,7 @@ describe("VestingVault with Sanctions Oracle and KPI Multiplier", function () {
     let owner, beneficiary, sanctionedUser, otherUser, keeper;
     
     const GRANT_AMOUNT = ethers.parseEther("1000");
+    const TARGET_REVENUE = ethers.parseEther("1000000");
     const VESTING_DURATION = 365 * 24 * 60 * 60; // 1 year in seconds
     const TOL = 100000000000000000n; // acceptable tolerance for tiny timestamp rounding (1e17)
 

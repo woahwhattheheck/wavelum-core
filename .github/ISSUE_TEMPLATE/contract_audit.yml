@@ -1,0 +1,31 @@
+
+name: Contract Audit Report
+description: Submit smart contract audit findings or security review items
+title: "[Audit]: "
+labels: ["audit", "security", "needs-triage"]
+body:
+  - type: textarea
+    id: audit-scope
+    attributes:
+      label: Scope of Audit
+      description: Contracts, functions, or commit hashes audited
+    validations:
+      required: true
+  - type: textarea
+    id: findings-summary
+    attributes:
+      label: Summary of Findings
+      description: Brief summary of all findings
+    validations:
+      required: true
+  - type: checkboxes
+    id: severity-levels
+    attributes:
+      label: Severity Levels
+      description: Breakdown of findings by severity
+      options:
+        - label: Critical
+        - label: High
+        - label: Medium
+        - label: Low
+        - label: Informational

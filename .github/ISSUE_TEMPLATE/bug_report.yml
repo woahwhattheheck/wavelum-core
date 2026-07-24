@@ -1,0 +1,48 @@
+
+name: Bug Report
+description: Report a bug or unexpected behavior in a smart contract or core component
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: input
+    id: contract-component
+    attributes:
+      label: Contract Name / Affected Component
+      description: Name of the smart contract or core component affected
+      placeholder: e.g., VestingVault, StakingContract
+    validations:
+      required: true
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Description of the Bug
+      description: A clear and concise description of what the bug is
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the issue
+      value: |
+        1. Go to '...'
+        2. Call function '...' with parameters '...'
+        3. Observe '...'
+    validations:
+      required: true
+  - type: dropdown
+    id: network-environment
+    attributes:
+      label: Network Environment
+      description: The network environment where the bug occurred
+      options:
+        - Testnet
+        - Mainnet
+        - Futurenet/Local
+    validations:
+      required: true
+  - type: input
+    id: transaction-hash
+    attributes:
+      label: Transaction Hash / Ledger Index (optional)
+      description: If applicable, provide a transaction hash or ledger index

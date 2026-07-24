@@ -1,0 +1,7 @@
+# Clippy configuration for Soroban smart contracts
+# This file enables strict safety checks for production code
+
+# Deny unsafe code in contracts
+deny-clippy-all = true
+too-many-arguments-threshold = 10
+type-complexity-threshold = 500

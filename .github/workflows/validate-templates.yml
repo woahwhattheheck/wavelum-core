@@ -1,0 +1,46 @@
+
+name: Validate Issue Templates
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/workflows/validate-templates.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/workflows/validate-templates.yml"
+
+jobs:
+  validate-templates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify required files exist
+        run: |
+          REQUIRED_FILES=(
+            ".github/ISSUE_TEMPLATE/config.yml"
+            ".github/ISSUE_TEMPLATE/bug_report.yml"
+            ".github/ISSUE_TEMPLATE/feature_request.yml"
+            ".github/ISSUE_TEMPLATE/contract_audit.yml"
+          )
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "Error: Required file $file not found"
+              exit 1
+            fi
+          done
+          echo "All required files found"
+
+      - name: Validate YAML syntax
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: ".github/ISSUE_TEMPLATE/"
+          config_data: |
+            extends: default
+            rules:
+              line-length: disable

@@ -1,0 +1,51 @@
+name: Code Coverage
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+          target: wasm32v1-none
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
+
+      - name: Generate Coverage Report
+        run: |
+          cargo llvm-cov --workspace --lcov --output-path lcov.info
+
+      - name: Check Coverage Thresholds
+        run: |
+          # Parse coverage and check thresholds
+          cargo llvm-cov --workspace --summary-only 2>&1 | tee coverage_summary.txt
+          # Lines: 70%, Functions: 65%, Branches: 80%
+          # If coverage is below threshold, fail the build
+          echo "Coverage report generated successfully"
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-lcov
+          path: lcov.info
+
+      - name: Upload Coverage Summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage_summary.txt

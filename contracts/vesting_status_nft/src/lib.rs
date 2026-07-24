@@ -1,4 +1,14 @@
 #![no_std]
+// Safety lint attributes for smart contract
+#![deny(unsafe_code)]
+#![warn(
+    missing_docs,
+    missing_debug_implementations,
+    unused_results,
+    clippy::all,
+    clippy::pedantic
+)]
+
 use soroban_sdk::{contract, contractimpl, contracttype, contractevent, Address, Env, String};
 
 mod vesting_contract {
