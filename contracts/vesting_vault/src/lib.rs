@@ -20,7 +20,10 @@ pub mod errors;
 pub use types::*;
 use errors::Error;
 use storage::{get_claim_history, set_claim_history, get_authorized_payout_address as storage_get_authorized_payout_address, set_authorized_payout_address as storage_set_authorized_payout_address, get_pending_address_request as storage_get_pending_address_request, set_pending_address_request as storage_set_pending_address_request, remove_pending_address_request as storage_remove_pending_address_request, get_timelock_duration, get_auditors, set_auditors, get_auditor_pause_requests, set_auditor_pause_requests, get_emergency_pause, set_emergency_pause, remove_emergency_pause, get_reputation_bridge_contract, set_reputation_bridge_contract, has_reputation_bonus_applied, set_reputation_bonus_applied, get_milestone_configs, set_milestone_configs, get_milestone_status, set_milestone_status, get_emergency_pause_duration, is_nullifier_used, set_nullifier_used, get_commitment, set_commitment, mark_commitment_used, add_privacy_claim_event, add_merkle_root, get_merkle_roots, is_valid_merkle_root, get_path_payment_config, set_path_payment_config, get_path_payment_claim_history, add_path_payment_claim_event, get_lst_config, set_lst_config, get_unvested_balance, set_unvested_balance, get_admin_dead_man_switch, set_admin_dead_man_switch, get_oracle_price_record, set_oracle_price_record, get_contract_total_unvested, set_contract_total_unvested, get_protocol_sunset, set_protocol_sunset, get_migration_payload, set_migration_payload, get_relayer_migration, set_relayer_migration};
-use emergency::{AuditorPauseRequest, EmergencyPause, EmergencyPauseTriggered};
+use emergency::{
+    AuditorInitialized, AuditorPauseRequest, EmergencyPause, EmergencyPauseTriggered,
+    EmergencyVoteCast,
+};
 
 #[contract]
 pub struct VestingVault;
@@ -335,7 +338,13 @@ impl VestingVault {
             return Err(Error::InvalidInput);
         }
         
+        let initialized_at = e.ledger().timestamp();
         set_auditors(&e, &auditors);
+        AuditorInitialized {
+            admin,
+            auditors,
+            initialized_at,
+        }.publish(&e);
 
         Ok(())
     }
@@ -374,9 +383,18 @@ impl VestingVault {
         
         requests.set(auditor.clone(), request);
         set_auditor_pause_requests(&e, &requests);
+
+        let vote_count = requests.len();
+        EmergencyVoteCast {
+            auditor: auditor.clone(),
+            vote_count,
+            required_votes: 2,
+            reason,
+            voted_at: current_time,
+        }.publish(&e);
         
         // Check if we have 2-out-of-3 requests
-        if requests.len() >= 2 {
+        if vote_count >= 2 {
             Self::trigger_emergency_pause(&e);
         }
 
@@ -494,7 +512,13 @@ impl VestingVault {
     /// Set the cross-project reputation bridge contract address (admin only).
     pub fn set_reputation_bridge(e: Env, admin: Address, bridge_contract: Address) {
         admin.require_auth();
+        let set_at = e.ledger().timestamp();
         set_reputation_bridge_contract(&e, &bridge_contract);
+        ReputationBridgeSet {
+            admin,
+            bridge_contract,
+            set_at,
+        }.publish(&e);
     }
 
     /// Apply reputation bonus based on cross-project success
@@ -562,13 +586,20 @@ impl VestingVault {
             return Err(Error::InvalidInput);
         }
         
+        let total_milestones = milestone_percentages.len() as u32;
         let _config = MilestoneConfig {
             vesting_id,
             milestone_percentages: milestone_percentages.clone(),
-            total_milestones: milestone_percentages.len() as u32,
+            total_milestones,
         };
         
         set_milestone_configs(&e, vesting_id, &milestone_percentages);
+        MilestoneConfigured {
+            vesting_id,
+            milestone_percentages,
+            total_milestones,
+            configured_at: e.ledger().timestamp(),
+        }.publish(&e);
 
         Ok(())
     }
@@ -737,7 +768,13 @@ impl VestingVault {
         }
         
         // Add the Merkle root
+        let added_at = e.ledger().timestamp();
         add_merkle_root(&e, &merkle_root);
+        MerkleRootAdminAdded {
+            merkle_root,
+            admin,
+            added_at,
+        }.publish(&e);
 
         Ok(())
     }

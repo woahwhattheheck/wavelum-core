@@ -14,6 +14,25 @@ pub struct AuditorPauseRequest {
     pub reason: String,
 }
 
+#[contractevent]
+#[derive(Clone)]
+pub struct AuditorInitialized {
+    pub admin: Address,
+    pub auditors: Vec<Address>,
+    pub initialized_at: u64,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct EmergencyVoteCast {
+    #[topic]
+    pub auditor: Address,
+    pub vote_count: u32,
+    pub required_votes: u32,
+    pub reason: String,
+    pub voted_at: u64,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub struct EmergencyPause {

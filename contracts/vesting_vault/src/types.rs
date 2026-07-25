@@ -119,6 +119,16 @@ pub struct MilestoneCompleted {
     pub completed_at: u64,
 }
 
+#[contractevent]
+#[derive(Clone)]
+pub struct MilestoneConfigured {
+    #[topic]
+    pub vesting_id: u32,
+    pub milestone_percentages: Vec<u32>,
+    pub total_milestones: u32,
+    pub configured_at: u64,
+}
+
 // Simulation types
 #[contracttype]
 #[derive(Clone)]
@@ -268,6 +278,15 @@ pub struct ReputationBonusApplied {
     pub applied_at: u64,
 }
 
+#[contractevent]
+#[derive(Clone)]
+pub struct ReputationBridgeSet {
+    #[topic]
+    pub admin: Address,
+    pub bridge_contract: Address,
+    pub set_at: u64,
+}
+
 // Zero-Knowledge Privacy Claims types
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -322,6 +341,15 @@ pub struct PrivateClaimExecuted {
     pub nullifier_hash: BytesN<32>,
     pub amount: i128,
     pub timestamp: u64,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct MerkleRootAdminAdded {
+    #[topic]
+    pub merkle_root: BytesN<32>,
+    pub admin: Address,
+    pub added_at: u64,
 }
 
 // Stellar Horizon Path Payment Claim types
