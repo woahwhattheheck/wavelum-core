@@ -7,6 +7,16 @@ pub enum Error {
     // 🔐 General (100s)
     Unauthorized = 100,
     InvalidInput = 101,
+    /// #13: Address is the zero address -- not allowed as a participant
+    ZeroAddress = 102,
+    /// #13: Duplicate addresses found where uniqueness is required
+    DuplicateAuditor = 103,
+    /// #13: Amount must be strictly positive (> 0)
+    AmountMustBePositive = 104,
+    /// #13: Vesting schedule ID must be strictly positive (> 0)
+    InvalidVestingId = 105,
+    /// #13: Timestamp exceeds the maximum reasonable date bound
+    TimestampTooLarge = 106,
 
     // ⏳ Vesting (200s)
     VestingNotFound = 200,
@@ -82,6 +92,10 @@ pub enum Error {
 
     // ⚙️ System (900s)
     Overflow = 900,
+    /// #9: Integer arithmetic overflow detected in financial computation
+    ArithmeticOverflow = 901,
+    /// #9: Integer arithmetic underflow detected in financial computation
+    ArithmeticUnderflow = 902,
 
     // 🗳️ Governance / DAO (500s)
     /// #223: No unvested balance found for the queried address

@@ -494,7 +494,7 @@ pub struct TokenSupplyInfo {
     pub last_updated: u64,
 }
 
-// Governance veto events (use contracttype to avoid macro issues)
+// Governance veto events (contracttype for Soroban SDK compatibility)
 #[contracttype]
 #[derive(Clone)]
 pub struct BeneficiaryReassignmentRequested {
