@@ -193,7 +193,10 @@ impl VestingVault {
                 let exchange_rate = Self::get_lst_exchange_rate(&e, &lst_config.lst_token_address);
                 // Rebasing math: exchange rate has 7 decimal precision (e.g. 1 LST = 1 Base -> 10,000,000)
                 // LST amount = (Base amount * exchange rate) / 10_000_000
-                let lst_amount = (amount * exchange_rate) / 10_000_000i128;
+                let lst_amount = amount
+                    .checked_mul(exchange_rate)
+                    .and_then(|v| v.checked_div(10_000_000i128))
+                    .ok_or(Error::Overflow)?;
                 
                 LSTClaimExecuted {
                     user: user.clone(),
@@ -494,7 +497,9 @@ impl VestingVault {
         let tokens_to_release = 1000i128; // Placeholder
         let estimated_gas_fee = 50000u64; // Placeholder in stroops
         let tax_withholding_amount = 50i128; // Placeholder
-        let net_amount = tokens_to_release - tax_withholding_amount;
+        let net_amount = tokens_to_release
+            .checked_sub(tax_withholding_amount)
+            .unwrap_or(0);
         
         ClaimSimulation {
             tokens_to_release,
@@ -1288,7 +1293,10 @@ impl VestingVault {
         // Check if reassignment exceeds 5% threshold
         let supply_info = get_token_supply_info(&e);
         let threshold = get_governance_veto_threshold(&e);
-        let threshold_amount = (supply_info.total_supply * threshold as i128) / 100;
+        let threshold_amount = supply_info.total_supply
+            .checked_mul(threshold as i128)
+            .and_then(|v| v.checked_div(100))
+            .ok_or(Error::Overflow)?;
         
         let requires_governance_veto = total_amount > threshold_amount;
         let effective_at = if requires_governance_veto {
@@ -1361,7 +1369,10 @@ impl VestingVault {
             
             let threshold = get_governance_veto_threshold(&e);
             let supply_info = get_token_supply_info(&e);
-            let veto_threshold = (supply_info.total_supply * threshold as i128) / 100;
+            let veto_threshold = supply_info.total_supply
+                .checked_mul(threshold as i128)
+                .and_then(|v| v.checked_div(100))
+                .ok_or(Error::Overflow)?;
             
             if total_veto_power >= veto_threshold {
                 return Err(Error::QuorumNotMet);
@@ -1442,7 +1453,10 @@ impl VestingVault {
         
         let threshold = get_governance_veto_threshold(&e);
         let supply_info = get_token_supply_info(&e);
-        let veto_threshold = (supply_info.total_supply * threshold as i128) / 100;
+        let veto_threshold = supply_info.total_supply
+            .checked_mul(threshold as i128)
+            .and_then(|v| v.checked_div(100))
+            .ok_or(Error::Overflow)?;
         
         if total_veto_power >= veto_threshold {
             // Veto threshold reached - cancel the reassignment
@@ -1489,7 +1503,10 @@ impl VestingVault {
     pub fn requires_governance_veto(e: Env, amount: i128) -> bool {
         let supply_info = get_token_supply_info(&e);
         let threshold = get_governance_veto_threshold(&e);
-        let threshold_amount = (supply_info.total_supply * threshold as i128) / 100;
+        let threshold_amount = supply_info.total_supply
+            .checked_mul(threshold as i128)
+            .and_then(|v| v.checked_div(100))
+            .unwrap_or(0);
         
         amount > threshold_amount
     }
@@ -1505,7 +1522,10 @@ impl VestingVault {
         
         let threshold = get_governance_veto_threshold(&e);
         let supply_info = get_token_supply_info(&e);
-        let veto_threshold = (supply_info.total_supply * threshold as i128) / 100;
+        let veto_threshold = supply_info.total_supply
+            .checked_mul(threshold as i128)
+            .and_then(|v| v.checked_div(100))
+            .unwrap_or(0);
         
         let is_vetoed = total_veto_power >= veto_threshold;
         
@@ -1562,8 +1582,11 @@ impl VestingVault {
         if let Some(config) = get_tax_withholding_config(e) {
             if config.enabled {
                 // Calculate tax amount (basis points)
-                let tax_amount = (gross_amount * config.tax_withholding_bps as i128) / 10000i128;
-                let net_amount = gross_amount - tax_amount;
+                let tax_amount = gross_amount
+                    .checked_mul(config.tax_withholding_bps as i128)
+                    .and_then(|v| v.checked_div(10000i128))
+                    .unwrap_or(0);
+                let net_amount = gross_amount.checked_sub(tax_amount).unwrap_or(gross_amount);
                 
                 return (net_amount, tax_amount, config.tax_treasury_address);
             }
@@ -1690,14 +1713,16 @@ impl VestingVault {
                 // Prevent rounding to zero by returning minimum unit
                 1i128
             } else {
-                amount / divisor
+                amount.checked_div(divisor).unwrap_or(0)
             }
         } else if decimals <= 2 {
             // Low-decimal tokens (1-2 decimals) - use enhanced precision
             // Multiply by a scaling factor to prevent rounding to zero
             let scaling_factor = 10i128.pow(decimals as u32);
-            let scaled_amount = amount * scaling_factor;
-            let result = (scaled_amount / divisor) / scaling_factor;
+            let scaled_amount = amount.checked_mul(scaling_factor).unwrap_or(amount);
+            let result = scaled_amount.checked_div(divisor)
+                .and_then(|v| v.checked_div(scaling_factor))
+                .unwrap_or(0);
             
             // Ensure we don't return zero when there should be a minimal amount
             if result == 0 && amount > 0 {
@@ -1707,7 +1732,7 @@ impl VestingVault {
             }
         } else {
             // Normal precision tokens (3+ decimals) - standard division
-            amount / divisor
+            amount.checked_div(divisor).unwrap_or(0)
         }
     }
 
@@ -2210,12 +2235,14 @@ impl VestingVault {
             return 0;
         }
         let diff = if new_price > old_price {
-            new_price - old_price
+            new_price.checked_sub(old_price).unwrap_or(0)
         } else {
-            old_price - new_price
+            old_price.checked_sub(new_price).unwrap_or(0)
         };
         // deviation_bps = (diff * 10000) / old_price
-        ((diff * 10_000) / old_price) as u32
+        diff.checked_mul(10_000)
+            .and_then(|v| v.checked_div(old_price))
+            .unwrap_or(0) as u32
     }
 
     // ========== ISSUE #231: Self-Destruct Prevention & Storage Locking ==========
