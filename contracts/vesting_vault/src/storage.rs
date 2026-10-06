@@ -415,6 +415,37 @@ pub fn get_token_metadata(e: &Env, asset: &Address) -> Option<crate::types::Toke
     e.storage().instance().get(&(TOKEN_METADATA, asset.clone()))
 }
 
+// --- Batch vesting schedule storage (Issue #11) ---
+pub const BATCH_VESTING_SCHEDULE: &str = "BATCH_VESTING_SCHEDULE";
+pub const BATCH_VESTING_COUNTER: &str = "BATCH_VESTING_COUNTER";
+
+pub fn set_batch_vesting_schedule(
+    e: &Env,
+    vesting_id: u32,
+    schedule: &crate::types::VestingSchedule,
+) {
+    e.storage()
+        .instance()
+        .set(&(BATCH_VESTING_SCHEDULE, vesting_id), schedule);
+}
+
+pub fn get_batch_vesting_schedule(
+    e: &Env,
+    vesting_id: u32,
+) -> Option<crate::types::VestingSchedule> {
+    e.storage()
+        .instance()
+        .get(&(BATCH_VESTING_SCHEDULE, vesting_id))
+}
+
+pub fn get_batch_vesting_counter(e: &Env) -> u32 {
+    e.storage().instance().get(&BATCH_VESTING_COUNTER).unwrap_or(0)
+}
+
+pub fn set_batch_vesting_counter(e: &Env, counter: u32) {
+    e.storage().instance().set(&BATCH_VESTING_COUNTER, &counter);
+}
+
 // --- Vesting grant storage ---
 pub const VESTING_GRANT: &str = "VESTING_GRANT"; // keyed by vesting_id
 
