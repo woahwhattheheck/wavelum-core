@@ -10,6 +10,7 @@ Thank you for your interest in contributing to Lumina Core! This document provid
 - [Testing Requirements](#testing-requirements)
 - [PR Checklist](#pr-checklist)
 - [Local Development Setup](#local-development-setup)
+- [Pre-commit Hooks](#pre-commit-hooks)
 - [Pull Request Process](#pull-request-process)
 
 ## Branch Naming
@@ -269,6 +270,7 @@ Before submitting a pull request, ensure:
 - [ ] Code is formatted with `cargo fmt`
 - [ ] `cargo clippy` passes without warnings
 - [ ] All tests pass: `cargo test --workspace`
+- [ ] Pre-commit hooks pass: `pre-commit run --all-files`
 - [ ] New functions have unit tests with >80% coverage
 - [ ] Documentation is updated for public API changes
 - [ ] `CONTRIBUTING.md` is followed (this file!)
@@ -350,6 +352,31 @@ cargo doc --no-deps --open
 cargo test -p vesting_contracts formal_reentrancy -- --nocapture
 ```
 
+## Pre-commit Hooks
+
+The repository uses [pre-commit](https://pre-commit.com/) to run the Rust quality gates before a commit is created.
+
+### Install
+
+```bash
+python3 -m pip install pre-commit
+pre-commit install
+```
+
+`cargo-audit` is optional for local commits. Install it to receive the informational dependency advisory locally; CI installs it automatically:
+
+```bash
+cargo install cargo-audit --locked
+```
+
+Run the complete hook set at any time with:
+
+```bash
+pre-commit run --all-files
+```
+
+The hooks enforce `cargo fmt --check` and clippy warnings, then run tests only for workspace packages that own the staged Rust/Cargo files. A root `Cargo.toml`, `Cargo.lock`, or an unmatched workspace-level Rust file safely falls back to `cargo test --workspace`. The cargo-audit hook reports findings but does not block a local commit.
+
 ## Pull Request Process
 
 1. **Fork and Branch**
@@ -388,6 +415,8 @@ The project uses GitHub Actions for continuous integration:
 - **Smart Contracts CI** runs on:
   - Push to `main`
   - Pull requests to `main`
+
+- **Pre-commit Checks** runs the same configured hooks on pushes and pull requests.
 
 - **CI Checks:**
   - Rust toolchain installation (1.91.0)
