@@ -1,5 +1,7 @@
 # Lumina Core
 
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
+
 Soroban smart contracts for the Lumina Network â€” a blockchain-based vesting vault and token streaming infrastructure with governance, staking, inheritance, lending, and cross-chain capabilities on Stellar.
 
 ## Contracts
