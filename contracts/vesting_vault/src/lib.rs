@@ -779,8 +779,33 @@ impl VestingVault {
         Ok(())
     }
     
-    /// Execute a private claim using ZK proof
-    /// This function allows users to claim tokens without revealing their identity
+    /// Record a privacy-claim transition against a previously stored commitment.
+    ///
+    /// This entry point intentionally does not call `require_auth`: replay protection is
+    /// provided by the nullifier and one-time commitment state instead of a public claimant
+    /// address. The current ZK verifier and token transfer remain placeholders, so this
+    /// function records the validated privacy-claim state transition but does not itself
+    /// prove a production SNARK or move tokens.
+    ///
+    /// # Parameters
+    /// - `zk_proof` – Commitment hash, nullifier hash, Merkle root, and proof bytes.
+    /// - `nullifier` – One-time nullifier that must not have been used previously.
+    /// - `amount` – Claim amount; must exactly match the stored commitment amount.
+    ///
+    /// # Preconditions
+    /// The contract must not be actively paused, the nullifier must be unused, the
+    /// referenced commitment must exist and remain unused, and the supplied Merkle root
+    /// must already be registered as valid.
+    ///
+    /// # State changes
+    /// On success the nullifier is consumed, the commitment is marked used, a privacy
+    /// claim-history record is appended, and `PrivateClaimExecuted` is emitted.
+    ///
+    /// # Errors
+    /// Returns `ContractPaused`, `AlreadyInitialized` for a reused nullifier,
+    /// `VaultNotFound` for a missing commitment, `AlreadyFullyClaimed` for a consumed
+    /// commitment, `InvalidAmount` for an amount mismatch, or `InvalidInput` for an
+    /// unrecognized Merkle root.
     pub fn private_claim(e: Env, zk_proof: ZKClaimProof, nullifier: Nullifier, amount: i128) -> Result<(), Error> {
         // No require_auth() - this is a privacy feature
         
