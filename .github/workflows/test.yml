@@ -9,6 +9,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/**"
+      - "scripts/**"
+      - "rust-toolchain.toml"
   pull_request:
     branches: [ "main", "develop", "release/*" ]
     paths:
@@ -17,6 +19,41 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/**"
+      - "scripts/**"
+      - "rust-toolchain.toml"
+
+  workflow_dispatch:
+    inputs:
+      deploy_testnet:
+        description: "Build workspace Wasm artifacts and deploy them to Stellar testnet"
+        required: true
+        type: boolean
+        default: false
+      smoke_contract:
+        description: "Workspace contract artifact stem used for the smoke probe"
+        required: true
+        type: string
+        default: "grant_contracts"
+      smoke_init_args_json:
+        description: "JSON argv for the state-changing initialization probe"
+        required: true
+        type: string
+        default: '["initialize_grant","--recipient","__SOURCE_ACCOUNT__","--total_amount","1000","--duration_seconds","60"]'
+      smoke_claim_args_json:
+        description: "JSON argv for the claim-path probe"
+        required: true
+        type: string
+        default: '["claimable_balance"]'
+      smoke_claim_send:
+        description: "Send the claim-path probe instead of simulation-only"
+        required: true
+        type: boolean
+        default: false
+      max_resource_fee_stroops:
+        description: "Per-transaction Soroban resource-fee ceiling"
+        required: true
+        type: number
+        default: 2000000
 
 env:
   CARGO_TERM_COLOR: always
@@ -190,3 +227,197 @@ jobs:
 
       - name: Quick Test
         run: cargo test --workspace -- --test-threads=4
+
+
+  soroban-build:
+    name: Soroban workspace build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain declared by rust-toolchain.toml
+        shell: bash
+        run: |
+          mapfile -t toolchain_config < <(python3 - <<'PY'
+          import tomllib
+          with open("rust-toolchain.toml", "rb") as handle:
+              config = tomllib.load(handle)["toolchain"]
+          print(config["channel"])
+          print(" ".join(config.get("targets", [])))
+          print(" ".join(config.get("components", [])))
+          PY
+          )
+          toolchain="${toolchain_config[0]}"
+          rustup toolchain install "${toolchain}" --profile minimal
+          for target in ${toolchain_config[1]}; do
+            rustup target add "${target}" --toolchain "${toolchain}"
+          done
+          for component in ${toolchain_config[2]}; do
+            rustup component add "${component}" --toolchain "${toolchain}"
+          done
+          rustup override set "${toolchain}"
+          rustc --version
+          cargo --version
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features
+
+      - name: Workspace tests
+        run: |
+          # Each contract enables soroban-sdk/testutils through dev-dependencies.
+          # There is no workspace-level "testutils" feature to pass to cargo.
+          cargo test --workspace
+
+      - name: Build Soroban Wasm artifacts
+        run: cargo build --workspace --target wasm32v1-none --release
+
+      - name: Collect Wasm and enforce artifact budget
+        env:
+          MAX_WASM_BYTES: "262144"
+        run: |
+          mkdir -p ci-wasm
+          while IFS= read -r -d '' wasm; do
+            cp "${wasm}" ci-wasm/
+          done < <(find target/wasm32v1-none/release -maxdepth 1 -type f -name '*.wasm' -print0 | sort -z)
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path("ci-wasm")
+          files = sorted(root.glob("*.wasm"))
+          if not files:
+              raise SystemExit("no Soroban Wasm artifacts were produced")
+
+          ceiling = int(os.environ["MAX_WASM_BYTES"])
+          oversize = []
+          for wasm in files:
+              size = wasm.stat().st_size
+              print(f"{wasm.name}: {size} bytes")
+              if size > ceiling:
+                  oversize.append((wasm.name, size))
+
+          if oversize:
+              details = ", ".join(f"{name}={size}" for name, size in oversize)
+              raise SystemExit(f"Wasm artifact budget exceeded ({ceiling} bytes): {details}")
+          PY
+
+      - name: Upload Soroban Wasm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soroban-wasm
+          path: ci-wasm/*.wasm
+          if-no-files-found: error
+
+  soroban-testnet-deploy:
+    name: Manual Stellar testnet deploy
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_testnet }}
+    needs: soroban-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      STELLAR_TESTNET_SECRET_KEY: ${{ secrets.STELLAR_TESTNET_SECRET_KEY }}
+      STELLAR_TESTNET_ACCOUNT: ${{ secrets.STELLAR_TESTNET_ACCOUNT }}
+      MAX_RESOURCE_FEE_STROOPS: ${{ inputs.max_resource_fee_stroops }}
+      SMOKE_CONTRACT: ${{ inputs.smoke_contract }}
+      SMOKE_INIT_ARGS_JSON: ${{ inputs.smoke_init_args_json }}
+      SMOKE_CLAIM_ARGS_JSON: ${{ inputs.smoke_claim_args_json }}
+      SMOKE_CLAIM_SEND: ${{ inputs.smoke_claim_send }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Soroban Wasm artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: soroban-wasm
+          path: ci-wasm
+
+      - name: Install Stellar CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="25.1.0"
+          archive="stellar-cli-${version}-x86_64-unknown-linux-gnu.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/stellar/stellar-cli/releases/download/v${version}/${archive}" \
+            --output "${archive}"
+          binary_path="$(tar -tzf "${archive}" | grep -E '(^|/)stellar(-cli)?$' | head -n 1)"
+          test -n "${binary_path}"
+          tar -xzf "${archive}"
+          sudo install -m 0755 "${binary_path}" /usr/local/bin/stellar
+          stellar --version
+
+      - name: Validate testnet credentials
+        shell: bash
+        run: |
+          test -n "${STELLAR_TESTNET_SECRET_KEY}" || {
+            echo "STELLAR_TESTNET_SECRET_KEY is required" >&2
+            exit 1
+          }
+          test -n "${STELLAR_TESTNET_ACCOUNT}" || {
+            echo "STELLAR_TESTNET_ACCOUNT is required" >&2
+            exit 1
+          }
+          case "${STELLAR_TESTNET_ACCOUNT}" in
+            G*) ;;
+            *)
+              echo "STELLAR_TESTNET_ACCOUNT must be a public G... account" >&2
+              exit 1
+              ;;
+          esac
+          if ! [[ "${MAX_RESOURCE_FEE_STROOPS}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "max_resource_fee_stroops must be a positive integer" >&2
+            exit 1
+          fi
+
+      - name: Deploy workspace contracts
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > testnet-deployments.txt
+          selected_contract_id=""
+          while IFS= read -r -d '' wasm; do
+            stem="$(basename "${wasm}" .wasm)"
+            contract_id="$(
+              stellar contract deploy \
+                --wasm "${wasm}" \
+                --source-account "${STELLAR_TESTNET_SECRET_KEY}" \
+                --network testnet \
+                --resource-fee "${MAX_RESOURCE_FEE_STROOPS}"
+            )"
+            printf '%s=%s\n' "${stem}" "${contract_id}" | tee -a testnet-deployments.txt
+            if [[ "${stem}" == "${SMOKE_CONTRACT}" ]]; then
+              selected_contract_id="${contract_id}"
+            fi
+          done < <(find ci-wasm -maxdepth 1 -type f -name '*.wasm' -print0 | sort -z)
+
+          if [[ -z "${selected_contract_id}" ]]; then
+            echo "Smoke contract artifact not found: ${SMOKE_CONTRACT}" >&2
+            exit 1
+          fi
+          echo "contract_id=${selected_contract_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run initialization and claim-path smoke probe
+        shell: bash
+        run: |
+          claim_send="no"
+          if [[ "${SMOKE_CLAIM_SEND}" == "true" ]]; then
+            claim_send="yes"
+          fi
+          python3 scripts/testnet-smoke.py \
+            --contract-id "${{ steps.deploy.outputs.contract_id }}" \
+            --source "${STELLAR_TESTNET_SECRET_KEY}" \
+            --account "${STELLAR_TESTNET_ACCOUNT}" \
+            --network testnet \
+            --max-resource-fee "${MAX_RESOURCE_FEE_STROOPS}" \
+            --init-json "${SMOKE_INIT_ARGS_JSON}" \
+            --claim-json "${SMOKE_CLAIM_ARGS_JSON}" \
+            --claim-send "${claim_send}"
+
+      - name: Upload deployment manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellar-testnet-deployments
+          path: testnet-deployments.txt
+          if-no-files-found: error
