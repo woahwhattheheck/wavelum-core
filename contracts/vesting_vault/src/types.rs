@@ -157,6 +157,7 @@ pub struct AddressWhitelistRequested {
 pub struct MilestoneConfig {
     /// Identifier for vesting.
     pub vesting_id: u32,
+    /// Unlock percentage assigned to each milestone; entries should sum to 100.
     pub milestone_percentages: Vec<u32>, // Percentage for each milestone (e.g., [25, 25, 50])
     /// Total milestones used for this record.
     pub total_milestones: u32,
@@ -168,6 +169,7 @@ pub struct MilestoneConfig {
 pub struct MilestoneStatus {
     /// Identifier for vesting.
     pub vesting_id: u32,
+    /// Completion map keyed by milestone number.
     pub completed_milestones: Map<u32, bool>, // milestone_number -> completed
     /// Last completed for this record.
     pub last_completed: u32,
@@ -225,8 +227,11 @@ pub struct ClaimSimulation {
 #[derive(Clone)]
 /// Contract data describing tax config.
 pub struct TaxConfig {
+    /// Tax rate in basis points, where 10,000 equals 100%.
     pub tax_bps: u32, // basis points (10000 = 100%)
+    /// Tax-authority address that receives withheld payments.
     pub authority: Address, // tax authority receiving payments
+    /// Optional asset in which tax must be paid; `None` uses the claim asset.
     pub tax_asset: Option<Address>, // if Some, tax must be paid in this asset (may require swap)
 }
 
@@ -436,6 +441,7 @@ pub struct ReputationBridgeSet {
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Contract data describing nullifier.
 pub struct Nullifier {
+    /// 256-bit nullifier or commitment hash.
     pub hash: BytesN<32>, // 256-bit hash
 }
 
@@ -464,6 +470,7 @@ pub struct ZKClaimProof {
     pub nullifier_hash: BytesN<32>,
     /// Merkle root value used by the contract.
     pub merkle_root: BytesN<32>,
+    /// Serialized zero-knowledge proof bytes supplied to the verifier.
     pub proof_data: Bytes, // Placeholder for actual ZK-SNARK proof
 }
 
@@ -530,9 +537,11 @@ pub struct MerkleRootAdminAdded {
 #[derive(Clone)]
 /// Contract data describing path payment config.
 pub struct PathPaymentConfig {
+    /// Asset that should be received after the path payment.
     pub destination_asset: Address, // USDC or other stablecoin
     /// Min destination amount used for this record.
     pub min_destination_amount: i128,
+    /// Ordered asset path used by the swap.
     pub path: Vec<Address>, // Path of assets for the swap
     /// Whether enabled.
     pub enabled: bool,
