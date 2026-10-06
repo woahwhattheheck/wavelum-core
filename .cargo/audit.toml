@@ -1,0 +1,9 @@
+# cargo-audit automatically discovers this project-local configuration.
+# Keep CI blocking at the issue-requested high/critical severity floor.
+[advisories]
+severity_threshold = "high"
+ignore = []
+
+[output]
+format = "json"
+show_tree = true
