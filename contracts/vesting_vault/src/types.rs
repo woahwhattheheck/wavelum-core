@@ -231,6 +231,91 @@ pub struct TokenMetadataRegistered {
     pub timestamp: u64,
 }
 
+// Batch vesting schedule creation (Issue #11)
+
+/// Hard ceiling used to keep one Soroban invocation within a predictable resource envelope.
+pub const MAX_BATCH_SCHEDULES: u32 = 100;
+
+/// User-supplied parameters for one vesting schedule in a batch.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScheduleParams {
+    pub beneficiary: Address,
+    pub amount: i128,
+    pub cliff: u64,
+    pub duration: u64,
+    pub start_time: u64,
+}
+
+/// Canonical schedule record created by batch_create_schedules.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct VestingSchedule {
+    pub vesting_id: u32,
+    pub beneficiary: Address,
+    pub amount: i128,
+    pub claimed_amount: i128,
+    pub cliff: u64,
+    pub duration: u64,
+    pub start_time: u64,
+    pub created_at: u64,
+}
+
+/// Per-input outcome. Failed inputs do not consume a vesting ID.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScheduleCreateResult {
+    pub index: u32,
+    pub success: bool,
+    pub vesting_id: Option<u32>,
+    pub error_code: Option<u32>,
+}
+
+/// Aggregate result for a partial-success batch.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct BatchResult {
+    pub requested: u32,
+    pub succeeded: u32,
+    pub failed: u32,
+    pub results: Vec<ScheduleCreateResult>,
+}
+
+/// Deterministic resource-footprint estimate used by callers before batching.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct BatchResourceEstimate {
+    pub schedule_count: u32,
+    pub max_schedule_count: u32,
+    pub estimated_storage_writes: u64,
+    pub estimated_events: u64,
+    pub within_limit: bool,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct ScheduleCreated {
+    #[topic]
+    pub vesting_id: u32,
+    #[topic]
+    pub beneficiary: Address,
+    pub amount: i128,
+    pub cliff: u64,
+    pub duration: u64,
+    pub start_time: u64,
+}
+
+#[contractevent]
+#[derive(Clone)]
+pub struct BatchSchedulesCreated {
+    #[topic]
+    pub admin: Address,
+    pub requested: u32,
+    pub succeeded: u32,
+    pub failed: u32,
+    pub total_amount: i128,
+}
+
 // Vesting grant for revocability expiration
 #[contracttype]
 #[derive(Clone)]
