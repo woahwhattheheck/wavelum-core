@@ -1,0 +1,62 @@
+# Dependency policy for `cargo deny --config .cargo/deny.toml check licenses bans`.
+#
+# The workspace currently inherits several incompatible transitive versions from
+# the Soroban/Stellar dependency graph. `multiple-versions = "deny"` remains the
+# policy; the exact old versions below are a temporary lockfile baseline so a
+# new duplicate version fails CI instead of silently growing the graph. cargo-deny
+# warns when a skipped version disappears, which makes each exception self-pruning.
+
+[graph]
+all-features = true
+
+[licenses]
+confidence-threshold = 0.93
+unused-allowed-license = "allow"
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "ISC",
+  "MIT",
+  "MPL-2.0",
+  "OpenSSL",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[bans]
+multiple-versions = "deny"
+multiple-versions-include-dev = true
+wildcards = "deny"
+highlight = "simplest-path"
+
+# Exact transitive duplicate baseline from Cargo.lock on 2026-10-06.
+# Keep only the newest observed line unskipped for each duplicate crate.
+skip = [
+  { crate = "darling@0.20.11", reason = "temporary transitive duplicate baseline" },
+  { crate = "darling_core@0.20.11", reason = "temporary transitive duplicate baseline" },
+  { crate = "darling_macro@0.20.11", reason = "temporary transitive duplicate baseline" },
+  { crate = "getrandom@0.2.17", reason = "temporary transitive duplicate baseline" },
+  { crate = "getrandom@0.3.4", reason = "temporary transitive duplicate baseline" },
+  { crate = "hashbrown@0.12.3", reason = "temporary transitive duplicate baseline" },
+  { crate = "hashbrown@0.13.2", reason = "temporary transitive duplicate baseline" },
+  { crate = "hashbrown@0.15.5", reason = "temporary transitive duplicate baseline" },
+  { crate = "indexmap@1.9.3", reason = "temporary transitive duplicate baseline" },
+  { crate = "r-efi@5.3.0", reason = "temporary transitive duplicate baseline" },
+  { crate = "rand@0.8.6", reason = "temporary transitive duplicate baseline" },
+  { crate = "rand_chacha@0.3.1", reason = "temporary transitive duplicate baseline" },
+  { crate = "rand_core@0.6.4", reason = "temporary transitive duplicate baseline" },
+  { crate = "schemars@0.8.22", reason = "temporary transitive duplicate baseline" },
+  { crate = "schemars@0.9.0", reason = "temporary transitive duplicate baseline" },
+  { crate = "stellar-strkey@0.0.13", reason = "temporary transitive duplicate baseline" },
+  { crate = "syn@1.0.109", reason = "temporary transitive duplicate baseline" },
+  { crate = "wasmparser@0.116.1", reason = "temporary transitive duplicate baseline" },
+  { crate = "wit-bindgen@0.51.0", reason = "temporary transitive duplicate baseline" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
