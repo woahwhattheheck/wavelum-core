@@ -82,6 +82,22 @@ fn schedules_can_be_claimed_independently() {
     client.claim(&first, &first_id, &100).unwrap();
     client.claim(&second, &second_id, &200).unwrap();
 
+    // Each batch schedule keeps its own cumulative claim state.
+    assert_eq!(
+        client
+            .get_batch_schedule_info(&first_id)
+            .unwrap()
+            .claimed_amount,
+        100
+    );
+    assert_eq!(
+        client
+            .get_batch_schedule_info(&second_id)
+            .unwrap()
+            .claimed_amount,
+        200
+    );
+
     let claims = client.get_all_claims();
     assert_eq!(claims.len(), 2);
     assert_eq!(claims.get(0).unwrap().vesting_id, first_id);

@@ -93,6 +93,27 @@ impl VestingVault {
             return Err(Error::AmountMustBePositive);
         }
 
+        // Batch-created schedules carry their own beneficiary and amount state.
+        // Bind only those IDs to that state; legacy/non-batch claim behavior is unchanged.
+        let batch_schedule_update =
+            if let Some(schedule) = storage::get_batch_vesting_schedule(&e, vesting_id) {
+                if schedule.beneficiary != user {
+                    return Err(Error::UnauthorizedScheduleAccess);
+                }
+
+                let next_claimed = schedule
+                    .claimed_amount
+                    .checked_add(amount)
+                    .ok_or(Error::ArithmeticOverflow)?;
+                if next_claimed > schedule.amount {
+                    return Err(Error::InvalidAmount);
+                }
+
+                Some((schedule, next_claimed))
+            } else {
+                None
+            };
+
         // ========== COMPLIANCE CHECKS ==========
 
         // KYC Verification Check
@@ -257,6 +278,11 @@ impl VestingVault {
         }
 
         // TODO: your base token vesting logic here
+
+        if let Some((mut schedule, next_claimed)) = batch_schedule_update {
+            schedule.claimed_amount = next_claimed;
+            storage::set_batch_vesting_schedule(&e, vesting_id, &schedule);
+        }
 
         let mut history = get_claim_history(&e);
 
