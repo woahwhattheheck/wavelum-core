@@ -6,6 +6,9 @@ on:
     paths:
       - "contracts/**"
       - "tests/**"
+      - "doc_tests/**"
+      - "docs/**"
+      - "DOCUMENTATION.md"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/**"
@@ -14,6 +17,9 @@ on:
     paths:
       - "contracts/**"
       - "tests/**"
+      - "doc_tests/**"
+      - "docs/**"
+      - "DOCUMENTATION.md"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/**"
@@ -60,6 +66,59 @@ jobs:
           fi
           
           echo "PR title follows conventional commits format"
+
+  docs:
+    name: Rustdoc & Documentation Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+
+      - name: Build rustdoc with warnings denied
+        env:
+          RUSTDOCFLAGS: "-D warnings -D missing-docs"
+        run: cargo doc --workspace --no-deps
+
+      - name: Run documentation tests
+        run: cargo test --manifest-path doc_tests/Cargo.toml
+
+      - name: Add workspace docs landing page
+        run: |
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=vesting_vault/index.html"><title>Wavelum Core Rustdoc</title><a href="vesting_vault/index.html">Open Wavelum Core Rustdoc</a>' > target/doc/index.html
+
+      - name: Upload generated rustdoc
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdoc
+          path: target/doc
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Prepare GitHub Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/doc
+
+  deploy-docs:
+    name: Deploy Rustdoc to GitHub Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: docs
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   test:
     name: Unit & Integration Tests
