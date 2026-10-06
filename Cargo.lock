@@ -1892,6 +1892,7 @@ dependencies = [
 name = "vesting_vault"
 version = "0.0.0"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
