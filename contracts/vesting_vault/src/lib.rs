@@ -12,9 +12,11 @@
 use soroban_sdk::{contract, contractimpl, Env, Address, Vec, Map, String, BytesN, IntoVal, Symbol};
 
 mod storage;
+/// Contract-facing data types and event payloads.
 pub mod types;
 mod audit_exporter;
 mod emergency;
+/// Typed contract errors and error helpers.
 pub mod errors;
 
 pub use types::*;
@@ -62,6 +64,7 @@ use emergency::{
     EmergencyVoteCast,
 };
 
+/// Soroban contract entry point for vesting, compliance, and privacy operations.
 #[contract]
 pub struct VestingVault;
 
