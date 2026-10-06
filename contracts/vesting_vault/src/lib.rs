@@ -1890,6 +1890,198 @@ impl VestingVault {
         }
     }
 
+    // ========== ISSUE #11: Batch vesting schedule creation ==========
+
+    fn validate_batch_schedule(schedule: &ScheduleParams) -> Result<(), Error> {
+        if schedule.amount <= 0 {
+            return Err(Error::AmountMustBePositive);
+        }
+        if schedule.duration == 0 || schedule.cliff > schedule.duration {
+            return Err(Error::InvalidSchedule);
+        }
+        schedule
+            .start_time
+            .checked_add(schedule.duration)
+            .ok_or(Error::ArithmeticOverflow)?;
+        Ok(())
+    }
+
+    fn next_batch_vesting_id(e: &Env, after: u32) -> Result<u32, Error> {
+        let mut candidate = after;
+        loop {
+            candidate = candidate.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
+            if get_vesting_grant(e, candidate).is_none()
+                && storage::get_batch_vesting_schedule(e, candidate).is_none()
+            {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    /// Estimate the deterministic write/event footprint for batch schedule creation.
+    ///
+    /// Each successful schedule writes one schedule record and one backwards-compatible
+    /// VestingGrant record and emits two events. One additional counter write and batch
+    /// summary event are included for a non-empty batch.
+    pub fn estimate_batch_create_resources(
+        _e: Env,
+        schedule_count: u32,
+    ) -> BatchResourceEstimate {
+        let count = schedule_count as u64;
+        BatchResourceEstimate {
+            schedule_count,
+            max_schedule_count: MAX_BATCH_SCHEDULES,
+            estimated_storage_writes: if schedule_count == 0 { 0 } else { count * 2 + 1 },
+            estimated_events: if schedule_count == 0 { 0 } else { count * 2 + 1 },
+            within_limit: schedule_count > 0 && schedule_count <= MAX_BATCH_SCHEDULES,
+        }
+    }
+
+    /// Create up to 100 vesting schedules in one invocation.
+    ///
+    /// Invalid schedule entries are reported in BatchResult and skipped without consuming
+    /// a vesting ID. Valid neighbors continue, providing explicit partial-success semantics.
+    pub fn batch_create_schedules(
+        e: Env,
+        admin: Address,
+        schedules: Vec<ScheduleParams>,
+    ) -> Result<BatchResult, Error> {
+        admin.require_auth();
+
+        let requested = schedules.len();
+        if requested == 0 || requested > MAX_BATCH_SCHEDULES {
+            return Err(Error::InvalidInput);
+        }
+
+        let created_at = e.ledger().timestamp();
+        let revocability_expires_at = created_at
+            .checked_add(12 * 30 * 24 * 60 * 60)
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        let mut cursor = storage::get_batch_vesting_counter(&e);
+        let mut succeeded = 0u32;
+        let mut failed = 0u32;
+        let mut total_amount = 0i128;
+        let mut results = Vec::new(&e);
+
+        for (index, schedule) in schedules.iter().enumerate() {
+            if let Err(err) = Self::validate_batch_schedule(&schedule) {
+                failed += 1;
+                results.push_back(ScheduleCreateResult {
+                    index: index as u32,
+                    success: false,
+                    vesting_id: None,
+                    error_code: Some(err as u32),
+                });
+                continue;
+            }
+
+            let next_total = match total_amount.checked_add(schedule.amount) {
+                Some(value) => value,
+                None => {
+                    failed += 1;
+                    results.push_back(ScheduleCreateResult {
+                        index: index as u32,
+                        success: false,
+                        vesting_id: None,
+                        error_code: Some(Error::ArithmeticOverflow as u32),
+                    });
+                    continue;
+                }
+            };
+
+            let vesting_id = match Self::next_batch_vesting_id(&e, cursor) {
+                Ok(value) => value,
+                Err(err) => {
+                    failed += 1;
+                    results.push_back(ScheduleCreateResult {
+                        index: index as u32,
+                        success: false,
+                        vesting_id: None,
+                        error_code: Some(err as u32),
+                    });
+                    continue;
+                }
+            };
+
+            let stored = VestingSchedule {
+                vesting_id,
+                beneficiary: schedule.beneficiary.clone(),
+                amount: schedule.amount,
+                claimed_amount: 0,
+                cliff: schedule.cliff,
+                duration: schedule.duration,
+                start_time: schedule.start_time,
+                created_at,
+            };
+            storage::set_batch_vesting_schedule(&e, vesting_id, &stored);
+
+            // Preserve compatibility with the existing grant/revocability APIs.
+            let grant = VestingGrant {
+                vesting_id,
+                beneficiary: schedule.beneficiary.clone(),
+                created_at,
+                is_revocable: true,
+                revocability_expires_at,
+            };
+            set_vesting_grant(&e, vesting_id, &grant);
+
+            VestingGrantCreated {
+                vesting_id,
+                beneficiary: schedule.beneficiary.clone(),
+                is_revocable: true,
+                revocability_expires_at,
+                created_at,
+            }
+            .publish(&e);
+
+            ScheduleCreated {
+                vesting_id,
+                beneficiary: schedule.beneficiary,
+                amount: schedule.amount,
+                cliff: schedule.cliff,
+                duration: schedule.duration,
+                start_time: schedule.start_time,
+            }
+            .publish(&e);
+
+            cursor = vesting_id;
+            total_amount = next_total;
+            succeeded += 1;
+            results.push_back(ScheduleCreateResult {
+                index: index as u32,
+                success: true,
+                vesting_id: Some(vesting_id),
+                error_code: None,
+            });
+        }
+
+        if succeeded > 0 {
+            storage::set_batch_vesting_counter(&e, cursor);
+        }
+
+        BatchSchedulesCreated {
+            admin,
+            requested,
+            succeeded,
+            failed,
+            total_amount,
+        }
+        .publish(&e);
+
+        Ok(BatchResult {
+            requested,
+            succeeded,
+            failed,
+            results,
+        })
+    }
+
+    /// Return a batch-created vesting schedule by ID.
+    pub fn get_batch_schedule_info(e: Env, vesting_id: u32) -> Option<VestingSchedule> {
+        storage::get_batch_vesting_schedule(&e, vesting_id)
+    }
+
     // ========== ISSUE #202: Implement Revocability Expiration (Cliff-Drop) ==========
     
     /// Create a new vesting grant with revocability expiration
