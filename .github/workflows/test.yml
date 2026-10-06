@@ -189,7 +189,8 @@ jobs:
           fi
           for wasm in "${wasms[@]}"; do
             name="$(basename "${wasm%.wasm}")"
-            twiggy top "$wasm" > "artifacts/twiggy/${name}.txt"
+            twiggy top "$wasm" > "artifacts/twiggy/${name}-top.txt"
+            twiggy garbage "$wasm" > "artifacts/twiggy/${name}-garbage.txt"
           done
 
           args=(
