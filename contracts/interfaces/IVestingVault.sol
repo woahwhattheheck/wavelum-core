@@ -28,6 +28,37 @@ interface IVestingVault {
         uint256 tax_rounding_accumulator; // accumulator for fractional tax parts to avoid losing stroops
     }
 
+    struct ScheduleParams {
+        address beneficiary;
+        uint256 amount;
+        uint64 cliff;
+        uint64 duration;
+        uint64 startTime;
+    }
+
+    struct ScheduleResult {
+        uint32 index;
+        bool success;
+        uint32 vestingId; // zero when the item failed
+        uint32 errorCode; // zero when the item succeeded
+    }
+
+    struct BatchResult {
+        uint32 requested;
+        uint32 succeeded;
+        uint32 failed;
+        ScheduleResult[] results;
+    }
+
+    /**
+     * @dev Creates multiple vesting schedules with per-item partial-success reporting.
+     * @param admin The authenticated administrator creating the schedules.
+     * @param schedules Schedule parameters, capped by the Soroban implementation at 100.
+     */
+    function batchCreateSchedules(address admin, ScheduleParams[] calldata schedules)
+        external
+        returns (BatchResult memory);
+
     /**
      * @dev Claims vested tokens for a beneficiary.
      * @param beneficiary The address claiming tokens.
