@@ -1,0 +1,8 @@
+{
+  "default_kb": 50,
+  "contracts": {
+    "vesting_vault": 100,
+    "staking_contract": 80,
+    "grant_contracts": 60
+  }
+}
