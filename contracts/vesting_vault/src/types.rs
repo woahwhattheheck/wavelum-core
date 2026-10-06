@@ -449,6 +449,7 @@ pub struct Nullifier {
 #[derive(Clone)]
 /// Contract data describing commitment.
 pub struct Commitment {
+    /// 256-bit commitment hash used as the storage lookup key.
     pub hash: BytesN<32>, // 256-bit hash
     /// Ledger timestamp for created at.
     pub created_at: u64,
