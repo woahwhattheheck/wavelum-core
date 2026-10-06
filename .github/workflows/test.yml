@@ -9,6 +9,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/**"
+      - ".github/wasm-size-budgets.json"
+      - "scripts/check-wasm-sizes.py"
   pull_request:
     branches: [ "main", "develop", "release/*" ]
     paths:
@@ -17,6 +19,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/**"
+      - ".github/wasm-size-budgets.json"
+      - "scripts/check-wasm-sizes.py"
 
 env:
   CARGO_TERM_COLOR: always
@@ -139,6 +143,77 @@ jobs:
         run: |
           cargo test --workspace
           cargo test --all-features
+
+  wasm-size-budget:
+    name: WASM Size Budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+          target: wasm32v1-none
+
+      - name: Build base branch WASM
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          git worktree add --detach ../wavelum-base "${{ github.event.pull_request.base.sha }}"
+          (
+            cd ../wavelum-base
+            cargo build --workspace --target wasm32v1-none --release
+          )
+          mkdir -p .wasm-baseline
+          cp ../wavelum-base/target/wasm32v1-none/release/*.wasm .wasm-baseline/
+          git worktree remove ../wavelum-base --force
+
+      - name: Build current WASM
+        run: cargo build --workspace --target wasm32v1-none --release
+
+      - name: Install Twiggy
+        run: cargo install twiggy --locked
+
+      - name: Report and enforce WASM budgets
+        shell: bash
+        run: |
+          mkdir -p artifacts/twiggy
+          shopt -s nullglob
+          wasms=(target/wasm32v1-none/release/*.wasm)
+          if (( ${#wasms[@]} == 0 )); then
+            echo "::error::No WASM binaries were produced"
+            exit 1
+          fi
+          for wasm in "${wasms[@]}"; do
+            name="$(basename "${wasm%.wasm}")"
+            twiggy top "$wasm" > "artifacts/twiggy/${name}.txt"
+          done
+
+          args=(
+            --config .github/wasm-size-budgets.json
+            --wasm-dir target/wasm32v1-none/release
+            --summary artifacts/wasm-size-summary.md
+            --json artifacts/wasm-sizes.json
+          )
+          if [ -d .wasm-baseline ]; then
+            args+=(--baseline-dir .wasm-baseline)
+          fi
+
+          rc=0
+          python3 scripts/check-wasm-sizes.py "${args[@]}" || rc=$?
+          cat artifacts/wasm-size-summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Upload WASM size analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-size-analysis
+          path: artifacts/
+          if-no-files-found: error
 
   fuzz-test:
     name: Fuzz & Property-Based Tests
