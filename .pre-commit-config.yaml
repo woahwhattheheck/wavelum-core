@@ -1,0 +1,31 @@
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt-check
+        name: cargo fmt --check
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+        files: '(^|/)(Cargo\.(toml|lock)|.*\.rs)$'
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        pass_filenames: false
+        files: '(^|/)(Cargo\.(toml|lock)|.*\.rs)$'
+
+      - id: cargo-test-affected
+        name: cargo test (affected workspace members)
+        entry: python3 scripts/pre-commit-affected-tests.py
+        language: system
+        files: '(^|/)(Cargo\.(toml|lock)|.*\.rs)$'
+
+      - id: cargo-audit-informational
+        name: cargo audit (informational)
+        entry: python3 scripts/pre-commit-cargo-audit.py
+        language: system
+        pass_filenames: false
+        files: '(^|/)Cargo\.(toml|lock)$'
