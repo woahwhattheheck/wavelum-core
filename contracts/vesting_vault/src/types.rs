@@ -313,6 +313,11 @@ pub struct ZKClaimProof {
     pub commitment_hash: BytesN<32>,
     pub nullifier_hash: BytesN<32>,
     pub merkle_root: BytesN<32>,
+    /// Merkle inclusion proof: sibling hashes from leaf to root
+    pub merkle_proof: Vec<BytesN<32>>,
+    /// Leaf index of the commitment in the Merkle tree (position bits select
+    /// the hashing order at each level)
+    pub position: u32,
     pub proof_data: Bytes, // Placeholder for actual ZK-SNARK proof
 }
 
@@ -814,6 +819,10 @@ pub struct ConfidentialClaimProof {
     pub claimed_amount: i128,
     /// Remaining amount after claim (public output)
     pub remaining_amount: i128,
+    /// Merkle inclusion proof for the commitment
+    pub merkle_proof: Vec<BytesN<32>>,
+    /// Leaf index of the commitment in the Merkle tree
+    pub position: u32,
     /// The actual ZK-SNARK proof (Circom output)
     pub proof_a: BytesN<32>,
     pub proof_b: BytesN<32>,

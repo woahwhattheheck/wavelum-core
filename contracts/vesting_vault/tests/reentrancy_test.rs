@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, Vec};
 use soroban_sdk::testutils::Address as _;
 use vesting_vault::errors::Error;
 use vesting_vault::{Nullifier, VestingVault, VestingVaultClient, ZKClaimProof};
@@ -62,6 +62,8 @@ fn test_private_claim_rejects_reentry_while_guard_held() {
         commitment_hash,
         nullifier_hash: nullifier_hash.clone(),
         merkle_root,
+        merkle_proof: Vec::new(&env),
+        position: 0,
         proof_data: Bytes::new(&env),
     };
     let nullifier = Nullifier { hash: nullifier_hash };
@@ -132,7 +134,8 @@ fn test_private_claim_releases_guard() {
 
     let commitment_hash = BytesN::from_array(&env, &[10u8; 32]);
     let nullifier_hash = BytesN::from_array(&env, &[11u8; 32]);
-    let merkle_root = BytesN::from_array(&env, &[12u8; 32]);
+    // Single-leaf tree: commitment hash doubles as the trusted root.
+    let merkle_root = commitment_hash.clone();
 
     client.create_commitment(&user, &1u32, &100i128, &commitment_hash);
     client.add_merkle_root_admin(&admin, &merkle_root);
@@ -141,6 +144,8 @@ fn test_private_claim_releases_guard() {
         commitment_hash,
         nullifier_hash: nullifier_hash.clone(),
         merkle_root,
+        merkle_proof: Vec::new(&env),
+        position: 0,
         proof_data: Bytes::new(&env),
     };
     client.private_claim(&proof, &Nullifier { hash: nullifier_hash }, &100i128);

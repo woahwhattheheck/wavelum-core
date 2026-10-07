@@ -89,7 +89,8 @@ fn test_private_claim_flow() {
     let vesting_id = 1u32;
     let amount = 1000i128;
     let commitment_hash = BytesN::from_array(&env, &[4u8; 32]);
-    let merkle_root = BytesN::from_array(&env, &[5u8; 32]);
+    // Single-leaf tree: the commitment hash is itself the trusted root.
+    let merkle_root = commitment_hash.clone();
     let nullifier_hash = BytesN::from_array(&env, &[6u8; 32]);
     let nullifier = Nullifier { hash: nullifier_hash.clone() };
     
@@ -104,6 +105,8 @@ fn test_private_claim_flow() {
         commitment_hash: commitment_hash.clone(),
         nullifier_hash: nullifier_hash.clone(),
         merkle_root: merkle_root.clone(),
+        merkle_proof: Vec::new(&env),
+        position: 0,
         proof_data: soroban_sdk::Bytes::new(&env),
     };
     
@@ -130,7 +133,8 @@ fn test_private_claim_double_spending_prevention() {
     let vesting_id = 1u32;
     let amount = 1000i128;
     let commitment_hash = BytesN::from_array(&env, &[7u8; 32]);
-    let merkle_root = BytesN::from_array(&env, &[8u8; 32]);
+    // Single-leaf tree: the commitment hash is itself the trusted root.
+    let merkle_root = commitment_hash.clone();
     let nullifier_hash = BytesN::from_array(&env, &[9u8; 32]);
     let nullifier = Nullifier { hash: nullifier_hash.clone() };
     
@@ -143,6 +147,8 @@ fn test_private_claim_double_spending_prevention() {
         commitment_hash: commitment_hash.clone(),
         nullifier_hash: nullifier_hash.clone(),
         merkle_root: merkle_root.clone(),
+        merkle_proof: Vec::new(&env),
+        position: 0,
         proof_data: soroban_sdk::Bytes::new(&env),
     };
     
@@ -170,7 +176,8 @@ fn test_emergency_pause_with_private_claims() {
     let auditor2 = Address::generate(&env);
     let amount = 1000i128;
     let commitment_hash = BytesN::from_array(&env, &[19u8; 32]);
-    let merkle_root = BytesN::from_array(&env, &[20u8; 32]);
+    // Single-leaf tree: the commitment hash is itself the trusted root.
+    let merkle_root = commitment_hash.clone();
     let nullifier_hash = BytesN::from_array(&env, &[21u8; 32]);
     let nullifier = Nullifier { hash: nullifier_hash.clone() };
     
@@ -196,6 +203,8 @@ fn test_emergency_pause_with_private_claims() {
         commitment_hash: commitment_hash.clone(),
         nullifier_hash: nullifier_hash.clone(),
         merkle_root: merkle_root.clone(),
+        merkle_proof: Vec::new(&env),
+        position: 0,
         proof_data: soroban_sdk::Bytes::new(&env),
     };
     

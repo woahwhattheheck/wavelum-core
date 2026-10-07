@@ -16,6 +16,7 @@ pub mod types;
 mod audit_exporter;
 mod emergency;
 pub mod errors;
+mod zk_verifier;
 
 pub use types::*;
 use errors::Error;
@@ -61,6 +62,7 @@ use emergency::{
     AuditorInitialized, AuditorPauseRequest, EmergencyPause, EmergencyPauseTriggered,
     EmergencyVoteCast,
 };
+use zk_verifier::ZKVerifier;
 
 #[contract]
 pub struct VestingVault;
@@ -823,7 +825,20 @@ impl VestingVault {
         if !is_valid_merkle_root(&e, &zk_proof.merkle_root) {
             return Err(Error::InvalidInput);
         }
-        
+
+        // Verify the commitment is actually a member of the trusted Merkle
+        // tree — a registered root alone does not prove the commitment was
+        // deposited (issue #6).
+        if !ZKVerifier::verify_merkle_proof(
+            &e,
+            &zk_proof.commitment_hash,
+            &zk_proof.merkle_proof,
+            &zk_proof.merkle_root,
+            zk_proof.position,
+        ) {
+            return Err(Error::InvalidZKProof);
+        }
+
         // TODO: Verify actual ZK-SNARK proof
         // This is a placeholder for the actual ZK proof verification
         // In a full implementation, this would use a ZK verification library
@@ -857,6 +872,12 @@ impl VestingVault {
         Ok(())
     }
     
+    /// Submit a trusted Merkle root (admin-only) — the entry point named by
+    /// the private-claim spec; delegates to `add_merkle_root_admin`.
+    pub fn submit_merkle_root(e: Env, admin: Address, merkle_root: BytesN<32>) -> Result<(), Error> {
+        Self::add_merkle_root_admin(e, admin, merkle_root)
+    }
+
     /// Add a Merkle root for ZK proof verification
     /// This function is called by the admin to add new Merkle roots
     pub fn add_merkle_root_admin(e: Env, admin: Address, merkle_root: BytesN<32>) -> Result<(), Error> {

@@ -8,9 +8,10 @@
 //! - Verification uses constant-time operations to prevent timing attacks
 //! - All proof validations return early on failure to minimize gas waste
 
-use soroban_sdk::{Env, BytesN};
+use soroban_sdk::{Env, Bytes, BytesN, Vec};
 use crate::types::ConfidentialClaimProof;
 use crate::errors::Error;
+use crate::storage::is_valid_merkle_root;
 
 /// Verification result for ZK proofs
 #[derive(Debug, PartialEq)]
@@ -84,10 +85,56 @@ impl ZKVerifier {
             return Err(Error::InvalidZKProof);
         }
 
-        // Step 6: Verify Merkle root is valid (checked in caller)
-        // This ensures the commitment is part of the valid set
+        // Step 6: Verify the Merkle root is a trusted, stored root and that
+        // the commitment is actually a member of that tree. A registered-but-
+        // unrelated root must not let a fabricated commitment claim.
+        if !is_valid_merkle_root(_e, &proof.merkle_root) {
+            return Err(Error::InvalidZKProof);
+        }
+        if !Self::verify_merkle_proof(
+            _e,
+            &proof.commitment_hash,
+            &proof.merkle_proof,
+            &proof.merkle_root,
+            proof.position,
+        ) {
+            return Err(Error::InvalidZKProof);
+        }
 
         Ok(())
+    }
+
+    /// Verify a Merkle inclusion proof: `leaf` sits at `position` in the tree
+    /// whose root is `root`.
+    ///
+    /// Standard positional verification: starting from the leaf, each sibling
+    /// in `proof` is paired with the running hash; the current position bit
+    /// selects the ordering (0 = running hash is the left child, 1 = right).
+    /// Returns `true` iff the recomputed root equals `root`.
+    pub fn verify_merkle_proof(
+        e: &Env,
+        leaf: &BytesN<32>,
+        proof: &Vec<BytesN<32>>,
+        root: &BytesN<32>,
+        position: u32,
+    ) -> bool {
+        let mut computed = leaf.clone();
+        let mut pos = position;
+
+        for sibling in proof.iter() {
+            let mut pair = Bytes::new(e);
+            if pos % 2 == 0 {
+                pair.append(&Bytes::from_array(e, &computed.to_array()));
+                pair.append(&Bytes::from_array(e, &sibling.to_array()));
+            } else {
+                pair.append(&Bytes::from_array(e, &sibling.to_array()));
+                pair.append(&Bytes::from_array(e, &computed.to_array()));
+            }
+            computed = e.crypto().sha256(&pair).to_bytes();
+            pos /= 2;
+        }
+
+        computed == *root
     }
 
     /// Verify the basic structure of the ZK proof
@@ -174,6 +221,7 @@ impl ZKVerifier {
     /// # Returns
     /// * The commitment hash
     pub fn compute_commitment(
+        e: &Env,
         _amount: i128,
         _blinding_factor: &BytesN<32>,
     ) -> BytesN<32> {
@@ -183,7 +231,7 @@ impl ZKVerifier {
         
         // For now, return a placeholder hash
         // This would be computed off-chain and passed to the contract
-        BytesN::from_array(&[0u8; 32])
+        BytesN::from_array(e, &[0u8; 32])
     }
 
     /// Verify a commitment opening
@@ -199,6 +247,7 @@ impl ZKVerifier {
     /// * `true` if the commitment opens correctly
     /// * `false` otherwise
     pub fn verify_commitment_opening(
+        e: &Env,
         commitment: &BytesN<32>,
         amount: i128,
         blinding_factor: &BytesN<32>,
@@ -208,7 +257,7 @@ impl ZKVerifier {
         
         // Placeholder: always return false to force off-chain computation
         // The actual verification should happen in the ZK circuit
-        let computed = Self::compute_commitment(amount, blinding_factor);
+        let computed = Self::compute_commitment(e, amount, blinding_factor);
         computed == *commitment
     }
 
@@ -224,6 +273,7 @@ impl ZKVerifier {
     /// # Returns
     /// * The nullifier hash
     pub fn compute_nullifier(
+        e: &Env,
         _secret: &BytesN<32>,
         _commitment: &BytesN<32>,
     ) -> BytesN<32> {
@@ -231,7 +281,7 @@ impl ZKVerifier {
         // nullifier = Hash(secret || commitment)
         // using a cryptographic hash function
         
-        BytesN::from_array(&[0u8; 32])
+        BytesN::from_array(e, &[0u8; 32])
     }
 }
 
@@ -239,75 +289,51 @@ impl ZKVerifier {
 mod tests {
     use super::*;
 
+    fn proof(env: &Env, commitment: u8, claimed: i128) -> ConfidentialClaimProof {
+        ConfidentialClaimProof {
+            commitment_hash: BytesN::from_array(env, &[commitment; 32]),
+            nullifier: BytesN::from_array(env, &[2u8; 32]),
+            merkle_root: BytesN::from_array(env, &[3u8; 32]),
+            claimed_amount: claimed,
+            remaining_amount: 900,
+            merkle_proof: Vec::new(env),
+            position: 0,
+            proof_a: BytesN::from_array(env, &[4u8; 32]),
+            proof_b: BytesN::from_array(env, &[5u8; 32]),
+            proof_c: BytesN::from_array(env, &[6u8; 32]),
+        }
+    }
+
     #[test]
     fn test_verify_proof_structure_valid() {
-        let proof = ConfidentialClaimProof {
-            commitment_hash: BytesN::from_array(&[1u8; 32]),
-            nullifier: BytesN::from_array(&[2u8; 32]),
-            merkle_root: BytesN::from_array(&[3u8; 32]),
-            claimed_amount: 100,
-            remaining_amount: 900,
-            proof_a: BytesN::from_array(&[4u8; 32]),
-            proof_b: BytesN::from_array(&[5u8; 32]),
-            proof_c: BytesN::from_array(&[6u8; 32]),
-        };
-
-        assert!(ZKVerifier::verify_proof_structure(&proof));
+        let env = Env::default();
+        assert!(ZKVerifier::verify_proof_structure(&proof(&env, 1, 100)));
     }
 
     #[test]
     fn test_verify_proof_structure_zero_proof_a() {
-        let proof = ConfidentialClaimProof {
-            commitment_hash: BytesN::from_array(&[1u8; 32]),
-            nullifier: BytesN::from_array(&[2u8; 32]),
-            merkle_root: BytesN::from_array(&[3u8; 32]),
-            claimed_amount: 100,
-            remaining_amount: 900,
-            proof_a: BytesN::from_array(&[0u8; 32]),
-            proof_b: BytesN::from_array(&[5u8; 32]),
-            proof_c: BytesN::from_array(&[6u8; 32]),
-        };
-
-        assert!(!ZKVerifier::verify_proof_structure(&proof));
+        let env = Env::default();
+        let mut p = proof(&env, 1, 100);
+        p.proof_a = BytesN::from_array(&env, &[0u8; 32]);
+        assert!(!ZKVerifier::verify_proof_structure(&p));
     }
 
     #[test]
     fn test_verify_proof_structure_zero_claimed_amount() {
-        let proof = ConfidentialClaimProof {
-            commitment_hash: BytesN::from_array(&[1u8; 32]),
-            nullifier: BytesN::from_array(&[2u8; 32]),
-            merkle_root: BytesN::from_array(&[3u8; 32]),
-            claimed_amount: 0,
-            remaining_amount: 900,
-            proof_a: BytesN::from_array(&[4u8; 32]),
-            proof_b: BytesN::from_array(&[5u8; 32]),
-            proof_c: BytesN::from_array(&[6u8; 32]),
-        };
-
-        assert!(!ZKVerifier::verify_proof_structure(&proof));
+        let env = Env::default();
+        assert!(!ZKVerifier::verify_proof_structure(&proof(&env, 1, 0)));
     }
 
     #[test]
     fn test_verify_confidential_claim_over_claim() {
         let env = Env::default();
-        let proof = ConfidentialClaimProof {
-            commitment_hash: BytesN::from_array(&[1u8; 32]),
-            nullifier: BytesN::from_array(&[2u8; 32]),
-            merkle_root: BytesN::from_array(&[3u8; 32]),
-            claimed_amount: 1000,
-            remaining_amount: 900,
-            proof_a: BytesN::from_array(&[4u8; 32]),
-            proof_b: BytesN::from_array(&[5u8; 32]),
-            proof_c: BytesN::from_array(&[6u8; 32]),
-        };
-        let expected_commitment = BytesN::from_array(&[1u8; 32]);
-        let remaining_shielded = 500;
+        let expected_commitment = BytesN::from_array(&env, &[1u8; 32]);
 
         let result = ZKVerifier::verify_confidential_claim(
             &env,
-            &proof,
+            &proof(&env, 1, 1000),
             &expected_commitment,
-            remaining_shielded,
+            500,
         );
 
         assert_eq!(result, Err(Error::OverClaimAttempt));
@@ -316,26 +342,55 @@ mod tests {
     #[test]
     fn test_verify_confidential_claim_invalid_commitment() {
         let env = Env::default();
-        let proof = ConfidentialClaimProof {
-            commitment_hash: BytesN::from_array(&[1u8; 32]),
-            nullifier: BytesN::from_array(&[2u8; 32]),
-            merkle_root: BytesN::from_array(&[3u8; 32]),
-            claimed_amount: 100,
-            remaining_amount: 900,
-            proof_a: BytesN::from_array(&[4u8; 32]),
-            proof_b: BytesN::from_array(&[5u8; 32]),
-            proof_c: BytesN::from_array(&[6u8; 32]),
-        };
-        let expected_commitment = BytesN::from_array(&[99u8; 32]);
-        let remaining_shielded = 1000;
+        let expected_commitment = BytesN::from_array(&env, &[99u8; 32]);
 
         let result = ZKVerifier::verify_confidential_claim(
             &env,
-            &proof,
+            &proof(&env, 1, 100),
             &expected_commitment,
-            remaining_shielded,
+            1000,
         );
 
         assert_eq!(result, Err(Error::InvalidZKProof));
+    }
+
+    #[test]
+    fn test_verify_merkle_proof_single_leaf() {
+        let env = Env::default();
+        let leaf = BytesN::from_array(&env, &[7u8; 32]);
+        // Single-leaf tree: the root IS the leaf and the proof is empty.
+        assert!(ZKVerifier::verify_merkle_proof(
+            &env,
+            &leaf,
+            &Vec::new(&env),
+            &leaf,
+            0,
+        ));
+    }
+
+    #[test]
+    fn test_verify_merkle_proof_two_leaves() {
+        let env = Env::default();
+        let leaf0 = BytesN::from_array(&env, &[10u8; 32]);
+        let leaf1 = BytesN::from_array(&env, &[11u8; 32]);
+
+        let mut buf = Bytes::new(&env);
+        buf.append(&Bytes::from_array(&env, &leaf0.to_array()));
+        buf.append(&Bytes::from_array(&env, &leaf1.to_array()));
+        let root: BytesN<32> = env.crypto().sha256(&buf).to_bytes();
+
+        let mut proof = Vec::new(&env);
+        proof.push_back(leaf1.clone());
+
+        assert!(ZKVerifier::verify_merkle_proof(&env, &leaf0, &proof, &root, 0));
+        // Same proof at the wrong position must not verify against this root.
+        assert!(!ZKVerifier::verify_merkle_proof(&env, &leaf0, &proof, &root, 1));
+        // Tampered sibling must not verify.
+        let mut bad = Vec::new(&env);
+        bad.push_back(BytesN::from_array(&env, &[99u8; 32]));
+        assert!(!ZKVerifier::verify_merkle_proof(&env, &leaf0, &bad, &root, 0));
+        // A different leaf with the same proof must not verify.
+        let other = BytesN::from_array(&env, &[12u8; 32]);
+        assert!(!ZKVerifier::verify_merkle_proof(&env, &other, &proof, &root, 0));
     }
 }
