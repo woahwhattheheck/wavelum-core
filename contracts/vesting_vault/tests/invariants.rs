@@ -21,6 +21,7 @@ proptest! {
     fn prop_governance_veto(
         supply in 10_000i128..1_000_000_000i128,
         threshold in 1u32..51u32,
+        first_vote_seed in 0u64..1_000_000_000u64,
     ) {
         let (env, admin, client) = setup();
         env.ledger().set_timestamp(1_000_000);
@@ -48,20 +49,17 @@ proptest! {
 
         let voter_a = Address::generate(&env);
         let voter_b = Address::generate(&env);
-        client.cast_veto_vote(
-            &voter_a,
-            &1u32,
-            &true,
-            &(veto_threshold - 1),
-        );
+        let first_veto_power = 1 + (i128::from(first_vote_seed) % (veto_threshold - 1));
+        let second_veto_power = veto_threshold - first_veto_power;
+        client.cast_veto_vote(&voter_a, &1u32, &true, &first_veto_power);
 
         let (is_vetoed_before, power_before, required_power) =
             client.get_veto_status(&1u32);
         prop_assert!(!is_vetoed_before);
-        prop_assert_eq!(power_before, veto_threshold - 1);
+        prop_assert_eq!(power_before, first_veto_power);
         prop_assert_eq!(required_power, veto_threshold);
 
-        client.cast_veto_vote(&voter_b, &1u32, &true, &1i128);
+        client.cast_veto_vote(&voter_b, &1u32, &true, &second_veto_power);
 
         prop_assert!(
             client.get_beneficiary_reassignment(&1u32).is_none(),
