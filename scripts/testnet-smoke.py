@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import subprocess
+import time
 from typing import Sequence
 
 
@@ -140,10 +141,13 @@ def main() -> None:
     parser.add_argument("--init-json", default="[]")
     parser.add_argument("--claim-json", default="[]")
     parser.add_argument("--claim-send", choices=("yes", "no"), default="no")
+    parser.add_argument("--claim-wait-seconds", type=int, default=0)
     args = parser.parse_args()
 
     if args.max_resource_fee <= 0:
         raise SystemExit("--max-resource-fee must be positive")
+    if args.claim_wait_seconds < 0:
+        raise SystemExit("--claim-wait-seconds must not be negative")
 
     init_args = parse_command(args.init_json, "--init-json", args.account)
     claim_args = parse_command(args.claim_json, "--claim-json", args.account)
@@ -157,6 +161,13 @@ def main() -> None:
         send="yes",
         label="initialization probe",
     )
+    if claim_args and args.claim_wait_seconds:
+        print(
+            f"claim-path probe: waiting {args.claim_wait_seconds}s "
+            "for the testnet ledger to advance"
+        )
+        time.sleep(args.claim_wait_seconds)
+
     invoke(
         contract_id=args.contract_id,
         source=args.source,
