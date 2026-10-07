@@ -50,7 +50,7 @@ on:
         type: boolean
         default: false
       max_resource_fee_stroops:
-        description: "Per-transaction Soroban resource-fee ceiling"
+        description: "Maximum simulated Soroban resource fee for smoke probes (stroops)"
         required: true
         type: number
         default: 2000000
@@ -383,8 +383,7 @@ jobs:
               stellar contract deploy \
                 --wasm "${wasm}" \
                 --source-account "${STELLAR_TESTNET_SECRET_KEY}" \
-                --network testnet \
-                --resource-fee "${MAX_RESOURCE_FEE_STROOPS}"
+                --network testnet
             )"
             printf '%s=%s\n' "${stem}" "${contract_id}" | tee -a testnet-deployments.txt
             if [[ "${stem}" == "${SMOKE_CONTRACT}" ]]; then
