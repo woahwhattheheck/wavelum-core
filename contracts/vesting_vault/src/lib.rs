@@ -57,6 +57,11 @@ use storage::{
     get_sep12_identity_oracle, set_sep12_identity_oracle,
     get_token_metadata, set_token_metadata,
     get_vesting_grant, set_vesting_grant,
+    get_emergency_admin, set_emergency_admin,
+    get_emergency_withdraw_limit, set_emergency_withdraw_limit,
+    get_emergency_withdraw_window, set_emergency_withdraw_window,
+    get_total_allocated, set_total_allocated,
+    EMERGENCY_WITHDRAW_WINDOW_SECS,
 };
 use emergency::{
     AuditorInitialized, AuditorPauseRequest, EmergencyPause, EmergencyPauseTriggered,
@@ -2634,6 +2639,235 @@ impl VestingVault {
     /// Check if a schedule has been merged
     pub fn is_schedule_merged(e: Env, schedule_id: u32) -> bool {
         storage::is_schedule_merged(&e, schedule_id)
+    }
+
+    // ========== ISSUE #12: Admin-Gated Emergency Withdrawal ==========
+
+    /// Require that `caller` is the registered emergency admin.
+    ///
+    /// # Errors
+    /// - `NotInitialized` if no emergency admin has been registered yet.
+    /// - `AdminNotRegistered` if `caller` does not match the registered admin.
+    fn require_emergency_admin(e: &Env, caller: &Address) -> Result<(), Error> {
+        match get_emergency_admin(e) {
+            None => Err(Error::NotInitialized),
+            Some(registered) if registered == *caller => Ok(()),
+            Some(_) => Err(Error::AdminNotRegistered),
+        }
+    }
+
+    /// Register the emergency admin who may recover stuck tokens.
+    ///
+    /// One-shot initialization: fails once an admin exists. In production the
+    /// admin address is expected to be a multisig account — `require_auth`
+    /// enforces the account's full signer threshold, which is what "multisig
+    /// admin authentication" means on Soroban.
+    ///
+    /// # Errors
+    /// - `AlreadyInitialized` if an emergency admin is already registered.
+    pub fn initialize_emergency_admin(e: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+
+        if get_emergency_admin(&e).is_some() {
+            return Err(Error::AlreadyInitialized);
+        }
+
+        set_emergency_admin(&e, &admin);
+
+        EmergencyAdminRegistered {
+            admin,
+            registered_at: e.ledger().timestamp(),
+        }.publish(&e);
+
+        Ok(())
+    }
+
+    /// Rotate the registered emergency admin to `successor`.
+    ///
+    /// Both the current admin and the successor must authorize: the successor's
+    /// signature proves control of the destination address so admin rights
+    /// cannot be locked onto a dead or mistyped address.
+    ///
+    /// # Errors
+    /// - `NotInitialized` / `AdminNotRegistered` per `require_emergency_admin`.
+    /// - `RecoveryAddressInvalid` if `successor == admin`.
+    pub fn rotate_emergency_admin(e: Env, admin: Address, successor: Address) -> Result<(), Error> {
+        admin.require_auth();
+        successor.require_auth();
+        Self::require_emergency_admin(&e, &admin)?;
+
+        if successor == admin {
+            return Err(Error::RecoveryAddressInvalid);
+        }
+
+        set_emergency_admin(&e, &successor);
+
+        EmergencyAdminRegistered {
+            admin: successor,
+            registered_at: e.ledger().timestamp(),
+        }.publish(&e);
+
+        Ok(())
+    }
+
+    /// Configure the maximum total amount recoverable per rolling 30-day
+    /// window. A limit of zero disables emergency withdrawals entirely
+    /// (the fail-closed default before configuration).
+    ///
+    /// # Errors
+    /// - `NotInitialized` / `AdminNotRegistered` per `require_emergency_admin`.
+    /// - `InvalidInput` if `limit` is negative.
+    pub fn set_emergency_withdrawal_limit(e: Env, admin: Address, limit: i128) -> Result<(), Error> {
+        admin.require_auth();
+        Self::require_emergency_admin(&e, &admin)?;
+
+        if limit < 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        set_emergency_withdraw_limit(&e, limit);
+
+        EmergencyWithdrawalLimitSet {
+            admin,
+            limit,
+            set_at: e.ledger().timestamp(),
+        }.publish(&e);
+
+        Ok(())
+    }
+
+    /// Update the total-allocated obligations counter.
+    ///
+    /// Vesting schedules in this contract do not carry token amounts, so the
+    /// obligations the vault must keep liquid are tracked on the
+    /// `TOTAL_ALLOCATED` counter (Issue #297 key). The registered admin keeps
+    /// it in sync with off-chain schedule accounting; `emergency_withdraw`
+    /// refuses to draw the contract's token balance below this figure.
+    ///
+    /// # Errors
+    /// - `NotInitialized` / `AdminNotRegistered` per `require_emergency_admin`.
+    /// - `InvalidInput` if `total` is negative.
+    pub fn record_total_allocated(e: Env, admin: Address, total: i128) -> Result<(), Error> {
+        admin.require_auth();
+        Self::require_emergency_admin(&e, &admin)?;
+
+        if total < 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        set_total_allocated(&e, total);
+        Ok(())
+    }
+
+    /// Recover tokens that are stuck in the vault — orphaned deposits, dust,
+    /// or funds from misconfigured schedules — without touching allocated
+    /// obligations.
+    ///
+    /// Unlike the claim paths, this entry point performs a real cross-contract
+    /// `token` transfer, so it takes the same reentrancy lock as the claim
+    /// entry points: a hostile token contract cannot re-enter `claim` or the
+    /// withdrawal path mid-call.
+    ///
+    /// The function stays callable while the vault is emergency-paused —
+    /// the pause exists to halt user flows, and recovery of trapped funds is
+    /// precisely what may be needed during an incident. The registered-admin
+    /// gate plus the rolling 30-day limit bound what the admin can draw.
+    ///
+    /// # Parameters
+    /// - `admin`  – Must be the registered emergency admin and sign.
+    /// - `token`  – Token contract address of the asset to recover.
+    /// - `to`     – Recipient; must not be the vault itself.
+    /// - `amount` – Amount in token base units; must be positive, within the
+    ///   30-day limit, and no more than `balance - total_allocated`.
+    ///
+    /// # Errors
+    /// - `ReentrancyDetected` if a guarded call is already in progress.
+    /// - `NotInitialized` / `AdminNotRegistered` for unauthorized callers.
+    /// - `AmountMustBePositive` if `amount <= 0`.
+    /// - `InvalidWithdrawalTarget` if `to` or `token` is the vault contract.
+    /// - `WithdrawalLimitExceeded` if the rolling 30-day limit would be broken.
+    /// - `InsufficientUnallocatedBalance` if the amount would draw below
+    ///   allocated obligations.
+    pub fn emergency_withdraw(e: Env, admin: Address, token: Address, to: Address, amount: i128) -> Result<(), Error> {
+        admin.require_auth();
+
+        // Reentrancy lock — this entry point makes a real cross-contract call.
+        let _guard = ReentrancyGuard::enter(&e)?;
+
+        Self::require_emergency_admin(&e, &admin)?;
+
+        if amount <= 0 {
+            return Err(Error::AmountMustBePositive);
+        }
+
+        let contract_address = e.current_contract_address();
+        if to == contract_address || token == contract_address {
+            return Err(Error::InvalidWithdrawalTarget);
+        }
+
+        // Rolling 30-day withdrawal limit (fail-closed: default limit is 0).
+        let current_time = e.ledger().timestamp();
+        let limit = get_emergency_withdraw_limit(&e);
+        let mut window = get_emergency_withdraw_window(&e)
+            .filter(|w| current_time < w.window_start.saturating_add(EMERGENCY_WITHDRAW_WINDOW_SECS))
+            .unwrap_or(EmergencyWithdrawWindow {
+                window_start: current_time,
+                withdrawn_in_window: 0,
+            });
+        window.withdrawn_in_window = window
+            .withdrawn_in_window
+            .checked_add(amount)
+            .ok_or(Error::Overflow)?;
+        if window.withdrawn_in_window > limit {
+            return Err(Error::WithdrawalLimitExceeded);
+        }
+
+        // The withdrawal may only touch the unallocated surplus: the live
+        // token balance minus tracked obligations.
+        let token_client = soroban_sdk::token::Client::new(&e, &token);
+        let balance = token_client.balance(&contract_address);
+        let available = balance.saturating_sub(get_total_allocated(&e));
+        if amount > available {
+            return Err(Error::InsufficientUnallocatedBalance);
+        }
+
+        // Effects before the interaction: commit the window accounting before
+        // calling out to the token contract.
+        set_emergency_withdraw_window(&e, &window);
+
+        token_client.transfer(&contract_address, &to, &amount);
+
+        EmergencyWithdrawal {
+            admin,
+            token,
+            to,
+            amount,
+            timestamp: current_time,
+        }.publish(&e);
+
+        Ok(())
+    }
+
+    /// Get the registered emergency admin, if any.
+    pub fn get_emergency_admin_state(e: Env) -> Option<Address> {
+        get_emergency_admin(&e)
+    }
+
+    /// Get the configured per-30-day emergency withdrawal limit
+    /// (0 = withdrawals disabled).
+    pub fn get_emergency_withdrawal_limit(e: Env) -> i128 {
+        get_emergency_withdraw_limit(&e)
+    }
+
+    /// Get the current rolling withdrawal window, if a withdrawal has occurred.
+    pub fn get_emergency_withdraw_window_state(e: Env) -> Option<EmergencyWithdrawWindow> {
+        get_emergency_withdraw_window(&e)
+    }
+
+    /// Get the total-allocated obligations counter checked by
+    /// `emergency_withdraw`.
+    pub fn get_total_allocated_state(e: Env) -> i128 {
+        get_total_allocated(&e)
     }
 
     /// Helper function to get schedule data from vault storage

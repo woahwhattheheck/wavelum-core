@@ -1032,3 +1032,59 @@ impl core::fmt::Debug for ReentrancyGuard {
         f.debug_struct("ReentrancyGuard").finish_non_exhaustive()
     }
 }
+
+// ========== Issue #12: Emergency Withdrawal ==========
+
+/// Rolling 30-day accounting window for emergency withdrawals.
+/// The window starts on the first withdrawal in a period and resets once
+/// `EMERGENCY_WITHDRAW_WINDOW_SECS` (30 days) have elapsed.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct EmergencyWithdrawWindow {
+    /// Ledger timestamp at which the current window opened.
+    pub window_start: u64,
+    /// Total amount withdrawn inside the current window.
+    pub withdrawn_in_window: i128,
+}
+
+/// Event emitted when the emergency admin is first registered or rotated.
+#[contractevent]
+#[derive(Clone)]
+pub struct EmergencyAdminRegistered {
+    /// Newly registered emergency admin (multisig accounts supported via
+    /// `require_auth`).
+    #[topic]
+    pub admin: Address,
+    /// Ledger timestamp of the registration.
+    pub registered_at: u64,
+}
+
+/// Event emitted when the 30-day emergency withdrawal limit is changed.
+#[contractevent]
+#[derive(Clone)]
+pub struct EmergencyWithdrawalLimitSet {
+    /// Registered admin who applied the change.
+    #[topic]
+    pub admin: Address,
+    /// New per-window withdrawal limit.
+    pub limit: i128,
+    /// Ledger timestamp of the change.
+    pub set_at: u64,
+}
+
+/// Event emitted on every successful emergency withdrawal.
+#[contractevent]
+#[derive(Clone)]
+pub struct EmergencyWithdrawal {
+    /// Registered admin who authorized the recovery.
+    #[topic]
+    pub admin: Address,
+    /// Token contract that was drawn down.
+    pub token: Address,
+    /// Recipient of the recovered funds.
+    pub to: Address,
+    /// Amount transferred (token base units).
+    pub amount: i128,
+    /// Ledger timestamp of the withdrawal.
+    pub timestamp: u64,
+}

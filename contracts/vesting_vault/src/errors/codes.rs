@@ -150,4 +150,14 @@ pub enum Error {
     InsufficientSchedules = 1103,
     /// #276: Schedule already merged or inactive
     ScheduleNotActive = 1104,
+
+    // 🚑 Emergency Withdrawal (1200s)
+    /// #12: Caller is not the registered emergency admin
+    AdminNotRegistered = 1200,
+    /// #12: Withdrawal would exceed the configured 30-day emergency limit
+    WithdrawalLimitExceeded = 1201,
+    /// #12: Amount exceeds token balance minus total allocated obligations
+    InsufficientUnallocatedBalance = 1202,
+    /// #12: Withdrawal destination or token is the vault contract itself
+    InvalidWithdrawalTarget = 1203,
 }

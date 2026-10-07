@@ -1,5 +1,5 @@
 use soroban_sdk::{Env, Vec, Address, Map, BytesN};
-use crate::types::{ClaimEvent, AuthorizedPayoutAddress, AddressWhitelistRequest, Nullifier, Commitment, PathPaymentConfig, PathPaymentClaimEvent, LockupConfig, BeneficiaryReassignment, VetoVote, TokenSupplyInfo, LSTConfig, ConfidentialGrant, MasterViewingKey, StreamPause, MasterSchedule};
+use crate::types::{ClaimEvent, AuthorizedPayoutAddress, AddressWhitelistRequest, Nullifier, Commitment, PathPaymentConfig, PathPaymentClaimEvent, LockupConfig, BeneficiaryReassignment, VetoVote, TokenSupplyInfo, LSTConfig, ConfidentialGrant, MasterViewingKey, StreamPause, MasterSchedule, EmergencyWithdrawWindow};
 
 pub const CLAIM_HISTORY: &str = "CLAIM_HISTORY";
 pub const AUTHORIZED_PAYOUT_ADDRESS: &str = "AUTHORIZED_PAYOUT_ADDRESS";
@@ -624,4 +624,73 @@ pub fn get_next_master_schedule_id(e: &Env) -> u32 {
     let next_id = current_id + 1;
     e.storage().instance().set(&("MASTER_SCHEDULE_COUNTER"), &next_id);
     next_id
+}
+
+// ========== ISSUE #12: Emergency Withdrawal Storage ==========
+
+/// Registered emergency admin; only this address may invoke
+/// `emergency_withdraw` and change the withdrawal configuration.
+pub const EMERGENCY_ADMIN: &str = "EMERGENCY_ADMIN";
+
+/// Configured maximum total withdrawal amount per rolling 30-day window.
+/// Absent key means the fail-closed default of zero — no emergency
+/// withdrawals until the admin configures a positive limit.
+pub const EMERGENCY_WITHDRAW_LIMIT: &str = "EMERGENCY_WITHDRAW_LIMIT";
+
+/// Rolling 30-day accounting window for emergency withdrawals.
+pub const EMERGENCY_WITHDRAW_WINDOW: &str = "EMERGENCY_WITHDRAW_WINDOW";
+
+/// Rolling window length: 30 days in seconds.
+pub const EMERGENCY_WITHDRAW_WINDOW_SECS: u64 = 2_592_000;
+
+/// Get the registered emergency admin, if any.
+pub fn get_emergency_admin(e: &Env) -> Option<Address> {
+    e.storage().instance().get(&EMERGENCY_ADMIN)
+}
+
+/// Register or rotate the emergency admin.
+pub fn set_emergency_admin(e: &Env, admin: &Address) {
+    e.storage().instance().set(&EMERGENCY_ADMIN, admin);
+}
+
+/// Get the configured per-30-day emergency withdrawal limit.
+/// Defaults to 0 (fail closed) when the admin has not configured a limit.
+pub fn get_emergency_withdraw_limit(e: &Env) -> i128 {
+    e.storage()
+        .instance()
+        .get(&EMERGENCY_WITHDRAW_LIMIT)
+        .unwrap_or(0i128)
+}
+
+/// Set the per-30-day emergency withdrawal limit.
+pub fn set_emergency_withdraw_limit(e: &Env, limit: i128) {
+    e.storage().instance().set(&EMERGENCY_WITHDRAW_LIMIT, &limit);
+}
+
+/// Get the current rolling withdrawal window, if a withdrawal has occurred.
+pub fn get_emergency_withdraw_window(e: &Env) -> Option<EmergencyWithdrawWindow> {
+    e.storage().instance().get(&EMERGENCY_WITHDRAW_WINDOW)
+}
+
+/// Persist the rolling withdrawal window.
+pub fn set_emergency_withdraw_window(e: &Env, window: &EmergencyWithdrawWindow) {
+    e.storage()
+        .instance()
+        .set(&EMERGENCY_WITHDRAW_WINDOW, window);
+}
+
+/// Total obligations the vault must keep liquid (`TOTAL_ALLOCATED`, Issue
+/// #297). Schedules in this codebase do not carry token amounts, so the
+/// emergency admin maintains this counter via `record_total_allocated`; the
+/// withdrawal check subtracts it from the live token balance.
+pub fn get_total_allocated(e: &Env) -> i128 {
+    e.storage()
+        .instance()
+        .get(&TOTAL_ALLOCATED)
+        .unwrap_or(0i128)
+}
+
+/// Set the total allocated obligations counter.
+pub fn set_total_allocated(e: &Env, total: i128) {
+    e.storage().instance().set(&TOTAL_ALLOCATED, &total);
 }
