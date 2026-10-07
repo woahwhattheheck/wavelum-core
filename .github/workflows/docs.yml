@@ -1,0 +1,92 @@
+name: Documentation CI
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "contracts/**"
+      - "doc_tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [ "main", "develop", "release/*" ]
+    paths:
+      - "contracts/**"
+      - "doc_tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  docs:
+    name: Rustdoc Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+
+      - name: Build documentation (warnings-as-errors, missing docs denied)
+        env:
+          RUSTDOCFLAGS: "-D warnings -D missing-docs"
+        run: cargo doc --workspace --no-deps
+
+      - name: Run doc_tests suite
+        run: cargo test --manifest-path doc_tests/Cargo.toml
+
+      - name: Upload generated documentation
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: rustdoc-docs
+          path: target/doc
+          retention-days: 30
+
+  deploy-pages:
+    name: Deploy docs to GitHub Pages
+    needs: docs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+
+      - name: Build documentation
+        run: cargo doc --workspace --no-deps
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/doc
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
