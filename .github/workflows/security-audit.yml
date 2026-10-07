@@ -1,0 +1,79 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "contracts/**/Cargo.toml"
+      - ".cargo/deny.toml"
+      - ".github/workflows/security-audit.yml"
+  pull_request:
+    branches: [ "main", "develop", "release/*" ]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "contracts/**/Cargo.toml"
+      - ".cargo/deny.toml"
+      - ".github/workflows/security-audit.yml"
+  # The RustSec advisory database moves even when the code does not — rescan
+  # the lockfile daily so a newly disclosed vulnerability fails loudly.
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  security-audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      # cargo audit exits non-zero on any vulnerability in Cargo.lock —
+      # blocking covers critical/high (and lower) severities. The JSON
+      # report is captured first and uploaded below even on failure.
+      - name: Dependency vulnerability scan
+        id: audit
+        continue-on-error: true
+        run: cargo audit --json > cargo-audit-report.json
+
+      # cargo-deny advisory check carries the explicit severity threshold:
+      # CVSS >= high (high + critical) is a hard failure via deny.toml.
+      - name: Advisory severity gate
+        run: cargo deny --config .cargo/deny.toml check advisories
+
+      - name: License compliance
+        run: cargo deny --config .cargo/deny.toml check licenses
+
+      - name: Duplicate dependency check
+        run: cargo deny --config .cargo/deny.toml check bans
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-audit-report
+          path: cargo-audit-report.json
+
+      # Audit findings are blocking — the gate runs after the report upload
+      # so the artifact is preserved on failure.
+      - name: Fail on audit findings
+        if: steps.audit.outcome == 'failure'
+        run: |
+          echo "cargo audit reported dependency vulnerabilities"
+          exit 1

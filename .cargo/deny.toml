@@ -1,0 +1,59 @@
+# cargo-deny policy (issue #31): license compliance, advisory severity and
+# duplicate-dependency bans for the workspace lockfile.
+# Docs: https://embarkstudios.github.io/cargo-deny/checks/index.html
+
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# A yanked release in the lockfile is a hard failure.
+yanked = "deny"
+# Blocking threshold: advisories with CVSS severity high or critical fail
+# `cargo deny check advisories`; lower severities report as warnings.
+severity-threshold = "high"
+
+[licenses]
+# Permitted licenses. Anything detected but absent here is denied via
+# `default = "deny"`; the explicit deny list plus `copyleft = "deny"`
+# guarantee GPL/AGPL-family licenses are rejected even if a crate is
+# re-categorized or dual-licensed inconsistently.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "0BSD",
+]
+deny = [
+    "GPL-2.0-only",
+    "GPL-2.0-or-later",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "AGPL-1.0-only",
+    "AGPL-1.0-or-later",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+]
+copyleft = "deny"
+default = "deny"
+confidence-threshold = 0.8
+# Workspace crates in this repository do not declare license metadata yet;
+# flag them as warnings rather than hard failures until license fields are
+# added to the member manifests. Unlicensed third-party crates are also
+# surfaced for review instead of silently passing.
+unlicensed = "warn"
+
+[bans]
+# Ban duplicate versions of the same crate in the resolved graph.
+multiple-versions = "deny"
+# Reject open-ended ("*") version requirements.
+wildcards = "deny"
