@@ -89,6 +89,8 @@ pub enum Error {
     // 🚨 Security (450s)
     /// Stream paused due to suspicious activity detection
     StreamPaused = 450,
+    /// Reentrant call attempted while a guarded entry point is executing
+    ReentrancyDetected = 451,
 
     // ⚙️ System (900s)
     Overflow = 900,

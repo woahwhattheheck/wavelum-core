@@ -35,6 +35,9 @@ pub const PATH_PAYMENT_CLAIM_HISTORY: &str = "PATH_PAYMENT_CLAIM_HISTORY";
 // Lock-up period storage keys
 pub const LOCKUP_CONFIGS: &str = "LOCKUP_CONFIGS";
 
+// Reentrancy guard storage key (claim entry points that make cross-contract calls)
+pub const REENTRANCY_GUARD: &str = "REENTRANCY_GUARD";
+
 // Beneficiary reassignment and governance veto storage keys
 pub const BENEFICIARY_REASSIGNMENTS: &str = "BENEFICIARY_REASSIGNMENTS";
 pub const VETO_VOTES: &str = "VETO_VOTES";
@@ -69,6 +72,18 @@ pub fn get_claim_history(e: &Env) -> Vec<ClaimEvent> {
 
 pub fn set_claim_history(e: &Env, history: &Vec<ClaimEvent>) {
     e.storage().instance().set(&CLAIM_HISTORY, history);
+}
+
+pub fn is_reentrancy_guard_active(e: &Env) -> bool {
+    e.storage().instance().has(&REENTRANCY_GUARD)
+}
+
+pub fn set_reentrancy_guard(e: &Env) {
+    e.storage().instance().set(&REENTRANCY_GUARD, &true);
+}
+
+pub fn clear_reentrancy_guard(e: &Env) {
+    e.storage().instance().remove(&REENTRANCY_GUARD);
 }
 
 pub fn get_authorized_payout_address(e: &Env, beneficiary: &Address) -> Option<AuthorizedPayoutAddress> {

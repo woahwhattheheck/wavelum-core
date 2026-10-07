@@ -85,6 +85,10 @@ impl VestingVault {
     pub fn claim(e: Env, user: Address, vesting_id: u32, amount: i128) -> Result<(), Error> {
         user.require_auth();
 
+        // Reentrancy lock — held for the whole call; nested entry into any
+        // guarded claim path while this executes fails with ReentrancyDetected.
+        let _guard = ReentrancyGuard::enter(&e)?;
+
         // ========== INPUT VALIDATION (Issue #13) ==========
         if vesting_id == 0 {
             return Err(Error::InvalidVestingId);
@@ -780,7 +784,10 @@ impl VestingVault {
     /// This function allows users to claim tokens without revealing their identity
     pub fn private_claim(e: Env, zk_proof: ZKClaimProof, nullifier: Nullifier, amount: i128) -> Result<(), Error> {
         // No require_auth() - this is a privacy feature
-        
+
+        // Reentrancy lock — first statement so a nested entry always rejects.
+        let _guard = ReentrancyGuard::enter(&e)?;
+
         // Check if contract is under emergency pause
         if let Some(pause) = get_emergency_pause(&e) {
             if pause.is_active {
@@ -968,6 +975,9 @@ impl VestingVault {
     /// This allows users to instantly swap their claimed tokens for USDC in one transaction
     pub fn claim_with_path_payment(e: Env, user: Address, vesting_id: u32, amount: i128, min_destination_amount: Option<i128>) -> Result<(), Error> {
         user.require_auth();
+
+        // Reentrancy lock — the path payment executes a cross-contract call.
+        let _guard = ReentrancyGuard::enter(&e)?;
 
         // INPUT VALIDATION (Issue #13)
         if vesting_id == 0 {
@@ -1257,6 +1267,9 @@ impl VestingVault {
     /// This is the enhanced claim function that handles lock-up periods
     pub fn claim_with_lockup(e: Env, user: Address, vesting_id: u32, amount: i128) -> Result<(), Error> {
         user.require_auth();
+
+        // Reentrancy lock — lockup claims call the lockup token contract.
+        let _guard = ReentrancyGuard::enter(&e)?;
 
         // INPUT VALIDATION (Issue #13)
         if vesting_id == 0 {
