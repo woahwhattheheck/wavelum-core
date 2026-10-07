@@ -38,17 +38,22 @@ on:
         description: "JSON argv for the state-changing initialization probe"
         required: true
         type: string
-        default: '["initialize_grant","--recipient","__SOURCE_ACCOUNT__","--total_amount","1000","--duration_seconds","60"]'
+        default: '["initialize_grant","--recipient","__SOURCE_ACCOUNT__","--total_amount","1000","--duration_seconds","1"]'
       smoke_claim_args_json:
         description: "JSON argv for the claim-path probe"
         required: true
         type: string
-        default: '["claimable_balance"]'
+        default: '["claim","--recipient","__SOURCE_ACCOUNT__"]'
       smoke_claim_send:
         description: "Send the claim-path probe instead of simulation-only"
         required: true
         type: boolean
-        default: false
+        default: true
+      smoke_claim_wait_seconds:
+        description: "Seconds to allow the testnet ledger to advance before the claim probe"
+        required: true
+        type: number
+        default: 10
       max_resource_fee_stroops:
         description: "Maximum simulated Soroban resource fee for smoke probes (stroops)"
         required: true
@@ -323,6 +328,7 @@ jobs:
       SMOKE_INIT_ARGS_JSON: ${{ inputs.smoke_init_args_json }}
       SMOKE_CLAIM_ARGS_JSON: ${{ inputs.smoke_claim_args_json }}
       SMOKE_CLAIM_SEND: ${{ inputs.smoke_claim_send }}
+      SMOKE_CLAIM_WAIT_SECONDS: ${{ inputs.smoke_claim_wait_seconds }}
     steps:
       - uses: actions/checkout@v4
 
@@ -412,7 +418,8 @@ jobs:
             --max-resource-fee "${MAX_RESOURCE_FEE_STROOPS}" \
             --init-json "${SMOKE_INIT_ARGS_JSON}" \
             --claim-json "${SMOKE_CLAIM_ARGS_JSON}" \
-            --claim-send "${claim_send}"
+            --claim-send "${claim_send}" \
+            --claim-wait-seconds "${SMOKE_CLAIM_WAIT_SECONDS}"
 
       - name: Upload deployment manifest
         uses: actions/upload-artifact@v4
