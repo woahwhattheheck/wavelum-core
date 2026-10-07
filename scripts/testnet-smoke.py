@@ -5,8 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 from typing import Sequence
+
+
+RESOURCE_FEE_PATTERN = re.compile(r"min_resource_fee:\s*([0-9_]+)")
 
 
 def parse_command(value: str, label: str, account: str) -> list[str]:
@@ -19,6 +23,64 @@ def parse_command(value: str, label: str, account: str) -> list[str]:
         raise SystemExit(f"{label} must be a JSON array of strings")
 
     return [account if item == "__SOURCE_ACCOUNT__" else item for item in parsed]
+
+
+def command(
+    *,
+    contract_id: str,
+    source: str,
+    network: str,
+    contract_args: Sequence[str],
+    send: str,
+    cost: bool,
+) -> list[str]:
+    args = [
+        "stellar",
+        "contract",
+        "invoke",
+        "--contract-id",
+        contract_id,
+        "--source-account",
+        source,
+        "--network",
+        network,
+        "--send",
+        send,
+    ]
+    if cost:
+        args.append("--cost")
+    return [*args, "--", *contract_args]
+
+
+def simulated_resource_fee(
+    *,
+    contract_id: str,
+    source: str,
+    network: str,
+    contract_args: Sequence[str],
+    label: str,
+) -> int:
+    result = subprocess.run(
+        command(
+            contract_id=contract_id,
+            source=source,
+            network=network,
+            contract_args=contract_args,
+            send="no",
+            cost=True,
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    combined = "\n".join((result.stdout, result.stderr))
+    match = RESOURCE_FEE_PATTERN.search(combined)
+    if match is None:
+        raise SystemExit(f"{label}: Stellar CLI cost output did not report min_resource_fee")
+
+    fee = int(match.group(1).replace("_", ""))
+    print(f"{label}: simulated minimum resource fee={fee} stroops")
+    return fee
 
 
 def invoke(
@@ -35,26 +97,35 @@ def invoke(
         print(f"{label}: skipped (no contract arguments configured)")
         return
 
-    print(f"{label}: {contract_args[0]} (send={send}, resource-fee ceiling={max_resource_fee} stroops)")
+    simulated_fee = simulated_resource_fee(
+        contract_id=contract_id,
+        source=source,
+        network=network,
+        contract_args=contract_args,
+        label=label,
+    )
+    if simulated_fee > max_resource_fee:
+        raise SystemExit(
+            f"{label}: simulated minimum resource fee {simulated_fee} exceeds "
+            f"budget {max_resource_fee} stroops"
+        )
+
+    print(
+        f"{label}: {contract_args[0]} "
+        f"(send={send}, simulated fee={simulated_fee}, budget={max_resource_fee} stroops)"
+    )
+    if send == "no":
+        return
+
     subprocess.run(
-        [
-            "stellar",
-            "contract",
-            "invoke",
-            "--contract-id",
-            contract_id,
-            "--source-account",
-            source,
-            "--network",
-            network,
-            "--resource-fee",
-            str(max_resource_fee),
-            "--send",
-            send,
-            "--cost",
-            "--",
-            *contract_args,
-        ],
+        command(
+            contract_id=contract_id,
+            source=source,
+            network=network,
+            contract_args=contract_args,
+            send=send,
+            cost=False,
+        ),
         check=True,
     )
 
