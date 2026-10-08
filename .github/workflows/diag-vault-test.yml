@@ -1,0 +1,14 @@
+name: diag-vesting-vault-test
+on:
+  push:
+    branches:
+      - fix/issue-3-packed-storage-keys
+jobs:
+  vault-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: vesting_vault tests
+        run: cargo test -p vesting_vault -- --nocapture

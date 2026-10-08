@@ -349,7 +349,7 @@ impl VestingVault {
         beneficiary.require_auth();
         
         // Remove the authorized address
-        e.storage().instance().remove(&(storage::AUTHORIZED_PAYOUT_ADDRESS, beneficiary.clone()));
+        e.storage().instance().remove(&storage::StorageKey::AuthorizedPayoutAddress(beneficiary.clone()));
         
         // Also remove any pending request
         storage_remove_pending_address_request(&e, &beneficiary);

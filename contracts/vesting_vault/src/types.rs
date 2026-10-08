@@ -975,8 +975,3 @@ pub struct SchedulesConsolidated {
     pub timestamp: u64,
 }
 
-/// Storage key for master schedules
-pub const MASTER_SCHEDULES: &str = "MASTER_SCHEDULES";
-
-/// Storage key for tracking merged schedule relationships
-pub const MERGED_SCHEDULES: &str = "MERGED_SCHEDULES";
