@@ -29,7 +29,7 @@ use crate::types::{ClaimEvent, AuthorizedPayoutAddress, AddressWhitelistRequest,
 /// of a full-length string, shrinking Soroban ledger entry size and the
 /// associated read/write storage fees.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum StorageKey {
     ClaimHistory,
     AuthorizedPayoutAddress(Address),
@@ -627,6 +627,9 @@ pub fn get_next_master_schedule_id(e: &Env) -> u32 {
 
 #[cfg(test)]
 mod packed_key_tests {
+    extern crate std;
+    use std::eprintln;
+
     use super::StorageKey;
     use crate::types::Nullifier;
     use soroban_sdk::testutils::Address as _;
