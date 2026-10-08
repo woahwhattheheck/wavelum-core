@@ -44,7 +44,7 @@ fn test_upgrade_blocked_while_unvested_funds_remain() {
     let result = env.try_invoke_contract::<Val, Error>(
         &contract_id,
         &Symbol::new(&env, "upgrade"),
-        (admin, bogus).into_val(&env),
+        (admin.clone(), bogus).into_val(&env),
     );
     assert!(result.is_err());
 
@@ -65,7 +65,7 @@ fn test_upgrade_rejects_unknown_wasm_hash() {
     let result = env.try_invoke_contract::<Val, Error>(
         &contract_id,
         &Symbol::new(&env, "upgrade"),
-        (admin, bogus).into_val(&env),
+        (admin.clone(), bogus).into_val(&env),
     );
     assert!(result.is_err());
 }
