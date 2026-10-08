@@ -1,0 +1,85 @@
+name: Changelog
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  changelog-check:
+    name: Validate changelog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate changelog format and contract coverage
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          changelog = Path("CHANGELOG.md")
+          if not changelog.is_file():
+              sys.exit("CHANGELOG.md is required")
+
+          text = changelog.read_text(encoding="utf-8")
+          if not text.startswith("# Changelog\n"):
+              sys.exit("CHANGELOG.md must start with '# Changelog'")
+          if "[Keep a Changelog]" not in text or "keepachangelog.com" not in text:
+              sys.exit("CHANGELOG.md must reference Keep a Changelog")
+
+          marker = "## [Unreleased]"
+          if marker not in text:
+              sys.exit("CHANGELOG.md must contain an [Unreleased] section")
+
+          unreleased = text.split(marker, 1)[1]
+          next_release = unreleased.find("\n## [")
+          if next_release >= 0:
+              unreleased = unreleased[:next_release]
+
+          required = [
+              "### Added",
+              "### Changed",
+              "### Deprecated",
+              "### Removed",
+              "### Fixed",
+              "### Security",
+          ]
+          positions = []
+          for heading in required:
+              position = unreleased.find(heading)
+              if position < 0:
+                  sys.exit(f"[Unreleased] is missing required section: {heading}")
+              positions.append(position)
+          if positions != sorted(positions):
+              sys.exit("[Unreleased] sections are not in Keep a Changelog order")
+
+          if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+              base = os.environ.get("BASE_SHA")
+              head = os.environ.get("HEAD_SHA")
+              if not base or not head:
+                  sys.exit("Pull request base/head SHAs are unavailable")
+              changed = subprocess.check_output(
+                  ["git", "diff", "--name-only", base, head],
+                  text=True,
+              ).splitlines()
+              touches_contracts = any(path.startswith("contracts/") for path in changed)
+              if touches_contracts and "CHANGELOG.md" not in changed:
+                  sys.exit(
+                      "Pull requests changing contracts/** must update CHANGELOG.md"
+                  )
+
+          print("CHANGELOG.md format and contract coverage checks passed")
+          PY
