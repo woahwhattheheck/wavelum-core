@@ -52,8 +52,8 @@ jobs:
         continue-on-error: true
         run: cargo audit --json > cargo-audit-report.json
 
-      # cargo-deny advisory check carries the explicit severity threshold:
-      # CVSS >= high (high + critical) is a hard failure via deny.toml.
+      # Current cargo-deny treats vulnerability advisories as errors. This is
+      # stricter than the issue's required high/critical blocking floor.
       - name: Advisory severity gate
         run: cargo deny --config .cargo/deny.toml check advisories
 
