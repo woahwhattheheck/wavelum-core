@@ -68,6 +68,59 @@ pub struct VestingVault;
 #[contractimpl]
 impl VestingVault {
 
+    fn prepare_batch_schedule_claim(
+        e: &Env,
+        user: &Address,
+        vesting_id: u32,
+        amount: i128,
+    ) -> Result<Option<crate::types::VestingSchedule>, Error> {
+        let Some(mut schedule) = storage::get_batch_vesting_schedule(e, vesting_id) else {
+            return Ok(None);
+        };
+
+        if schedule.beneficiary != user.clone() {
+            return Err(Error::UnauthorizedScheduleAccess);
+        }
+
+        let current_time = e.ledger().timestamp();
+        let cliff_time = schedule
+            .start_time
+            .checked_add(schedule.cliff)
+            .ok_or(Error::ArithmeticOverflow)?;
+        if current_time < cliff_time {
+            return Err(Error::CliffNotReached);
+        }
+
+        let elapsed = current_time
+            .saturating_sub(schedule.start_time)
+            .min(schedule.duration);
+        let vested_amount = schedule
+            .amount
+            .checked_mul(i128::from(elapsed))
+            .and_then(|value| value.checked_div(i128::from(schedule.duration)))
+            .ok_or(Error::ArithmeticOverflow)?;
+        let next_claimed = schedule
+            .claimed_amount
+            .checked_add(amount)
+            .ok_or(Error::ArithmeticOverflow)?;
+        if next_claimed > vested_amount {
+            return Err(Error::InvalidAmount);
+        }
+
+        schedule.claimed_amount = next_claimed;
+        Ok(Some(schedule))
+    }
+
+    fn commit_batch_schedule_claim(
+        e: &Env,
+        vesting_id: u32,
+        schedule: Option<crate::types::VestingSchedule>,
+    ) {
+        if let Some(schedule) = schedule {
+            storage::set_batch_vesting_schedule(e, vesting_id, &schedule);
+        }
+    }
+
     /// Claim vested tokens for a beneficiary.
     ///
     /// Runs the full compliance gate (KYC, sanctions, AML, etc.) before recording
@@ -96,40 +149,7 @@ impl VestingVault {
         // Batch-created schedules carry their own beneficiary, amount, and time bounds.
         // Bind only those IDs to that state; legacy/non-batch claim behavior is unchanged.
         let batch_schedule_update =
-            if let Some(schedule) = storage::get_batch_vesting_schedule(&e, vesting_id) {
-                if schedule.beneficiary != user {
-                    return Err(Error::UnauthorizedScheduleAccess);
-                }
-
-                let current_time = e.ledger().timestamp();
-                let cliff_time = schedule
-                    .start_time
-                    .checked_add(schedule.cliff)
-                    .ok_or(Error::ArithmeticOverflow)?;
-                if current_time < cliff_time {
-                    return Err(Error::CliffNotReached);
-                }
-
-                let elapsed = current_time
-                    .saturating_sub(schedule.start_time)
-                    .min(schedule.duration);
-                let vested_amount = schedule
-                    .amount
-                    .checked_mul(i128::from(elapsed))
-                    .and_then(|value| value.checked_div(i128::from(schedule.duration)))
-                    .ok_or(Error::ArithmeticOverflow)?;
-                let next_claimed = schedule
-                    .claimed_amount
-                    .checked_add(amount)
-                    .ok_or(Error::ArithmeticOverflow)?;
-                if next_claimed > vested_amount {
-                    return Err(Error::InvalidAmount);
-                }
-
-                Some((schedule, next_claimed))
-            } else {
-                None
-            };
+            Self::prepare_batch_schedule_claim(&e, &user, vesting_id, amount)?;
 
         // ========== COMPLIANCE CHECKS ==========
 
@@ -296,10 +316,7 @@ impl VestingVault {
 
         // TODO: your base token vesting logic here
 
-        if let Some((mut schedule, next_claimed)) = batch_schedule_update {
-            schedule.claimed_amount = next_claimed;
-            storage::set_batch_vesting_schedule(&e, vesting_id, &schedule);
-        }
+        Self::commit_batch_schedule_claim(&e, vesting_id, batch_schedule_update);
 
         let mut history = get_claim_history(&e);
 
@@ -1049,6 +1066,9 @@ impl VestingVault {
             return Err(Error::InvalidInput);
         }
 
+        let batch_schedule_update =
+            Self::prepare_batch_schedule_claim(&e, &user, vesting_id, amount)?;
+
         // TODO: Calculate actual vesting amounts and validate claim
         // This would integrate with the existing vesting logic
         let actual_claimable_amount = amount; // Placeholder - should calculate based on vesting schedule
@@ -1088,6 +1108,7 @@ impl VestingVault {
         // Emit the path payment claim event
         PathPaymentClaimExecuted { user: user.clone(), source_amount: actual_claimable_amount, destination_amount, destination_asset: config.destination_asset.clone(), timestamp: current_time, vesting_id }.publish(&e);
 
+        Self::commit_batch_schedule_claim(&e, vesting_id, batch_schedule_update);
         Ok(())
     }
     
@@ -1340,11 +1361,15 @@ impl VestingVault {
             // Additional milestone logic would go here
         }
 
+        let batch_schedule_update =
+            Self::prepare_batch_schedule_claim(&e, &user, vesting_id, amount)?;
+
         // Check if lock-up period is configured for this vesting schedule
         if let Some(lockup_config) = get_lockup_config(&e, vesting_id) {
             if lockup_config.enabled {
                 // Issue wrapped tokens instead of raw tokens
                 Self::issue_wrapped_tokens(&e, &user, vesting_id, amount, &lockup_config);
+                Self::commit_batch_schedule_claim(&e, vesting_id, batch_schedule_update);
                 return Ok(());
             }
         }
@@ -1362,6 +1387,7 @@ impl VestingVault {
         history.push_back(event);
 
         set_claim_history(&e, &history);
+        Self::commit_batch_schedule_claim(&e, vesting_id, batch_schedule_update);
 
         Ok(())
     }
