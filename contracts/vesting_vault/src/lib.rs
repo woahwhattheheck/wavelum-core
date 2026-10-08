@@ -93,7 +93,7 @@ impl VestingVault {
             return Err(Error::AmountMustBePositive);
         }
 
-        // Batch-created schedules carry their own beneficiary and amount state.
+        // Batch-created schedules carry their own beneficiary, amount, and time bounds.
         // Bind only those IDs to that state; legacy/non-batch claim behavior is unchanged.
         let batch_schedule_update =
             if let Some(schedule) = storage::get_batch_vesting_schedule(&e, vesting_id) {
@@ -101,11 +101,28 @@ impl VestingVault {
                     return Err(Error::UnauthorizedScheduleAccess);
                 }
 
+                let current_time = e.ledger().timestamp();
+                let cliff_time = schedule
+                    .start_time
+                    .checked_add(schedule.cliff)
+                    .ok_or(Error::ArithmeticOverflow)?;
+                if current_time < cliff_time {
+                    return Err(Error::CliffNotReached);
+                }
+
+                let elapsed = current_time
+                    .saturating_sub(schedule.start_time)
+                    .min(schedule.duration);
+                let vested_amount = schedule
+                    .amount
+                    .checked_mul(i128::from(elapsed))
+                    .and_then(|value| value.checked_div(i128::from(schedule.duration)))
+                    .ok_or(Error::ArithmeticOverflow)?;
                 let next_claimed = schedule
                     .claimed_amount
                     .checked_add(amount)
                     .ok_or(Error::ArithmeticOverflow)?;
-                if next_claimed > schedule.amount {
+                if next_claimed > vested_amount {
                     return Err(Error::InvalidAmount);
                 }
 
