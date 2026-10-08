@@ -118,6 +118,12 @@ impl ZKVerifier {
         root: &BytesN<32>,
         position: u32,
     ) -> bool {
+        // position is u32, so proofs deeper than 32 levels cannot encode
+        // all left/right path bits. Reject before doing attacker-controlled hashing.
+        if proof.len() > 32 {
+            return false;
+        }
+
         let mut computed = leaf.clone();
         let mut pos = position;
 
@@ -395,5 +401,26 @@ mod tests {
         // A different leaf with the same proof must not verify.
         let other = BytesN::from_array(&env, &[12u8; 32]);
         assert!(!ZKVerifier::verify_merkle_proof(&env, &other, &proof, &root, 0));
+    }
+
+    #[test]
+    fn test_verify_merkle_proof_rejects_depth_beyond_position_width() {
+        let env = Env::default();
+        let leaf = BytesN::from_array(&env, &[10u8; 32]);
+        let sibling = BytesN::from_array(&env, &[11u8; 32]);
+        let mut proof = Vec::new(&env);
+        let mut root = leaf.clone();
+
+        // Build a 33-level all-left path that would otherwise hash to this root.
+        // u32 position cannot represent a 33rd direction bit, so it is invalid.
+        for _ in 0..33 {
+            proof.push_back(sibling.clone());
+            let mut pair = Bytes::new(&env);
+            pair.append(&Bytes::from_array(&env, &root.to_array()));
+            pair.append(&Bytes::from_array(&env, &sibling.to_array()));
+            root = env.crypto().sha256(&pair).to_bytes();
+        }
+
+        assert!(!ZKVerifier::verify_merkle_proof(&env, &leaf, &proof, &root, 0));
     }
 }
