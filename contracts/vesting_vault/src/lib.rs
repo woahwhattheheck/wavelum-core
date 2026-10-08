@@ -2433,6 +2433,33 @@ impl VestingVault {
         Ok(())
     }
 
+    /// Upgrade the contract's executable WASM to a new code hash.
+    ///
+    /// Issue #8: Soroban native upgradeability (option B). The call is
+    /// admin-gated and reuses `assert_safe_to_upgrade`: an upgrade is
+    /// rejected while any unvested balance remains so user funds cannot be
+    /// trapped by swapping code mid-vesting.
+    ///
+    /// `new_wasm_hash` is the SHA-256 hash of contract WASM previously
+    /// uploaded to the ledger (`Deployer::upload_contract_wasm`). Instance
+    /// and persistent storage survive the swap; new code must remain
+    /// storage-compatible or migrate on first invocation.
+    ///
+    /// # Errors
+    /// - `Error::UpgradeBlockedByUnvestedFunds` when unvested balance > 0
+    /// - host error when the hash does not reference uploaded WASM
+    pub fn upgrade(e: Env, admin: Address, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        Self::assert_safe_to_upgrade(e.clone(), admin)?;
+        e.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
+    }
+
+    /// Current contract version. Bump when shipping a new WASM build so
+    /// operators can verify an upgrade took effect.
+    pub fn version(_e: Env) -> u32 {
+        1
+    }
+
     /// Returns the contract-wide total unvested balance.
     /// Used by assert_safe_to_upgrade and external auditors.
     pub fn get_total_unvested_balance(e: Env) -> i128 {

@@ -1,0 +1,24 @@
+name: diag-upgrade
+on:
+  push:
+    branches:
+      - fix/issue-8-native-upgrade
+jobs:
+  upgrade-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+      - uses: Swatinem/rust-cache@v2
+      - name: build vesting_vault wasm (for real-upgrade test path)
+        run: cargo build -p vesting_vault --target wasm32v1-none --release
+        continue-on-error: true
+      - name: vesting_vault lib tests
+        run: cargo test -p vesting_vault --lib -- --nocapture
+      - name: upgrade integration tests
+        run: cargo test -p vesting_vault --test upgrade -- --nocapture
