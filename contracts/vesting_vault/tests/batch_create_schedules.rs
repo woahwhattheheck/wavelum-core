@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
+use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, Vec};
 use vesting_vault::{ScheduleParams, VestingVault, VestingVaultClient};
 
 fn setup() -> (Env, Address, VestingVaultClient<'static>) {
@@ -79,6 +79,10 @@ fn schedules_can_be_claimed_independently() {
     let first_id = result.results.get(0).unwrap().vesting_id.unwrap();
     let second_id = result.results.get(1).unwrap().vesting_id.unwrap();
 
+    // Advance to full vesting before exercising independent claim accounting.
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 31_536_000);
+
     client.claim(&first, &first_id, &100).unwrap();
     client.claim(&second, &second_id, &200).unwrap();
 
@@ -102,6 +106,49 @@ fn schedules_can_be_claimed_independently() {
     assert_eq!(claims.len(), 2);
     assert_eq!(claims.get(0).unwrap().vesting_id, first_id);
     assert_eq!(claims.get(1).unwrap().vesting_id, second_id);
+}
+
+#[test]
+fn batch_schedule_claim_respects_cliff_and_linear_vesting() {
+    let (env, admin, client) = setup();
+    let beneficiary = Address::generate(&env);
+    let start_time = env.ledger().timestamp();
+    let schedules = Vec::from_array(
+        &env,
+        [ScheduleParams {
+            beneficiary: beneficiary.clone(),
+            amount: 1_000,
+            cliff: 100,
+            duration: 1_000,
+            start_time,
+        }],
+    );
+
+    let result = client.batch_create_schedules(&admin, &schedules).unwrap();
+    let vesting_id = result.results.get(0).unwrap().vesting_id.unwrap();
+
+    let before_cliff = client.try_claim(&beneficiary, &vesting_id, &1);
+    assert_eq!(before_cliff, Err(Ok(vesting_vault::Error::CliffNotReached)));
+
+    env.ledger().set_timestamp(start_time + 500);
+
+    // Half the duration has elapsed, so no more than 500 is vested.
+    let over_vested = client.try_claim(&beneficiary, &vesting_id, &501);
+    assert_eq!(over_vested, Err(Ok(vesting_vault::Error::InvalidAmount)));
+
+    client.claim(&beneficiary, &vesting_id, &500).unwrap();
+    let no_more_vested = client.try_claim(&beneficiary, &vesting_id, &1);
+    assert_eq!(no_more_vested, Err(Ok(vesting_vault::Error::InvalidAmount)));
+
+    env.ledger().set_timestamp(start_time + 1_000);
+    client.claim(&beneficiary, &vesting_id, &500).unwrap();
+    assert_eq!(
+        client
+            .get_batch_schedule_info(&vesting_id)
+            .unwrap()
+            .claimed_amount,
+        1_000
+    );
 }
 
 #[test]
