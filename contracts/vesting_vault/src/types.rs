@@ -765,6 +765,15 @@ pub struct UpgradeBlocked {
     pub blocked_at: u64,
 }
 
+#[contractevent]
+#[derive(Clone)]
+pub struct ContractUpgraded {
+    #[topic]
+    pub admin: Address,
+    pub wasm_hash: BytesN<32>,
+    pub upgraded_at: u64,
+}
+
 // ========== ISSUE #269: Zero-Knowledge Confidential Grant Amounts ==========
 
 /// Confidential grant storing commitment instead of plaintext amount
