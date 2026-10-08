@@ -811,13 +811,44 @@ pub struct ConfidentialClaimProof {
     pub claimed_amount: i128,
     /// Remaining amount after claim (public output)
     pub remaining_amount: i128,
-    /// The actual ZK-SNARK proof (Circom output)
-    pub proof_a: BytesN<32>,
-    pub proof_b: BytesN<32>,
-    pub proof_c: BytesN<32>,
+    /// The actual Groth16 ZK-SNARK proof (snarkjs/Circom output, ethereum
+    /// uncompressed affine encoding): a is G1 (x||y, 64B), b is G2
+    /// (x_c1||x_c0||y_c1||y_c0, 128B), c is G1 (64B).
+    pub proof_a: BytesN<64>,
+    pub proof_b: BytesN<128>,
+    pub proof_c: BytesN<64>,
 }
 
 /// Event emitted when a confidential claim is executed
+
+/// Groth16 verifying key for the BN254 (alt_bn128) claim circuits.
+///
+/// Points use the ethereum/snarkjs uncompressed affine serialization:
+/// G1 = x||y big-endian (64 bytes), G2 = x_c1||x_c0||y_c1||y_c0 big-endian
+/// (128 bytes). The all-zero encoding is the point at infinity.
+///
+/// `ic` must contain exactly `number_of_public_inputs + 1` G1 points: `ic[0]`
+/// is the constant term and `ic[i]` multiplies public input `i - 1`. For the
+/// private-claim circuit (public inputs
+/// [commitment_hash, nullifier_hash, merkle_root, claimed_amount]) `ic.len()`
+/// must be 5; for the confidential-claim circuit
+/// ([commitment_hash, nullifier, merkle_root, claimed_amount, remaining_amount])
+/// it must be 6.
+#[contracttype]
+#[derive(Clone)]
+pub struct ZkVerificationKey {
+    /// alpha in G1
+    pub alpha_g1: BytesN<64>,
+    /// beta in G2
+    pub beta_g2: BytesN<128>,
+    /// gamma in G2
+    pub gamma_g2: BytesN<128>,
+    /// delta in G2
+    pub delta_g2: BytesN<128>,
+    /// IC points in G1 (constant term first)
+    pub ic: Vec<BytesN<64>>,
+}
+
 #[contractevent]
 #[derive(Clone)]
 pub struct ConfidentialClaimExecuted {

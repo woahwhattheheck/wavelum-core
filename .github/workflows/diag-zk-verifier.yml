@@ -1,0 +1,19 @@
+name: diag-zk-verifier
+on:
+  push:
+    branches:
+      - fix/issue-5-groth16-verifier
+jobs:
+  zk-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: vesting_vault lib tests (incl. zk_verifier unit tests)
+        run: cargo test -p vesting_vault --lib -- --nocapture
+      - name: zk_privacy_claims integration tests
+        run: cargo test -p vesting_vault --test zk_privacy_claims -- --nocapture

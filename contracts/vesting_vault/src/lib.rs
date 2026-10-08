@@ -16,6 +16,7 @@ pub mod types;
 mod audit_exporter;
 mod emergency;
 pub mod errors;
+mod zk_verifier;
 
 pub use types::*;
 use errors::Error;
@@ -56,6 +57,8 @@ use storage::{
     get_sep12_identity_oracle, set_sep12_identity_oracle,
     get_token_metadata, set_token_metadata,
     get_vesting_grant, set_vesting_grant,
+    get_zk_verification_key as storage_get_zk_verification_key,
+    set_zk_verification_key as storage_set_zk_verification_key,
 };
 use emergency::{
     AuditorInitialized, AuditorPauseRequest, EmergencyPause, EmergencyPauseTriggered,
@@ -817,10 +820,23 @@ impl VestingVault {
             return Err(Error::InvalidInput);
         }
         
-        // TODO: Verify actual ZK-SNARK proof
-        // This is a placeholder for the actual ZK proof verification
-        // In a full implementation, this would use a ZK verification library
-        Self::verify_zk_proof(&e, &zk_proof);
+        // The consumed nullifier must be the one the proof binds to,
+        // otherwise a valid proof could be replayed under a fresh nullifier.
+        if zk_proof.nullifier_hash != nullifier.hash {
+            return Err(Error::InvalidInput);
+        }
+
+        // Verify the Groth16 (BN254) ZK-SNARK proof before mutating any state.
+        // The configured verifying key is required: without it no claim can be
+        // verified, so the contract fails closed.
+        let vk = storage_get_zk_verification_key(&e)
+            .ok_or(Error::NotInitialized)?;
+        let proof_ok = zk_verifier::ZKVerifier::verify_private_claim_proof(
+            &e, &zk_proof, &vk, amount,
+        )?;
+        if !proof_ok {
+            return Err(Error::InvalidZKProof);
+        }
         
         // Mark nullifier as used
         set_nullifier_used(&e, &nullifier);
@@ -850,6 +866,26 @@ impl VestingVault {
         Ok(())
     }
     
+    /// Configure the Groth16 verifying key used to verify private-claim proofs.
+    ///
+    /// The key must correspond to the private-claim circuit (public inputs
+    /// [commitment_hash, nullifier_hash, merkle_root, claimed_amount], so
+    /// `ic.len()` must equal 5). Updating the key switches which circuit
+    /// proofs are accepted; it does not affect already-consumed nullifiers.
+    pub fn set_zk_verification_key(e: Env, admin: Address, vk: ZkVerificationKey) -> Result<(), Error> {
+        admin.require_auth();
+        if vk.ic.len() != 5 {
+            return Err(Error::InvalidInput);
+        }
+        storage_set_zk_verification_key(&e, &vk);
+        Ok(())
+    }
+
+    /// Read the configured Groth16 verifying key, if any.
+    pub fn get_zk_verification_key(e: Env) -> Option<ZkVerificationKey> {
+        storage_get_zk_verification_key(&e)
+    }
+
     /// Add a Merkle root for ZK proof verification
     /// This function is called by the admin to add new Merkle roots
     pub fn add_merkle_root_admin(e: Env, admin: Address, merkle_root: BytesN<32>) -> Result<(), Error> {
@@ -898,13 +934,7 @@ impl VestingVault {
     
     /// Placeholder for ZK proof verification
     /// In a full implementation, this would verify the actual ZK-SNARK proof
-    fn verify_zk_proof(_e: &Env, _zk_proof: &ZKClaimProof) -> bool {
-        // TODO: Implement actual ZK proof verification
-        // For now, we'll assume the proof is valid
-        // In production, this would integrate with a ZK verification library
-        true
-    }
-    
+
     /// Enable privacy mode for a vesting schedule
     /// This allows beneficiaries to choose between public and private claims
     pub fn enable_privacy_mode(_e: Env, user: Address, _vesting_id: u32) {

@@ -26,6 +26,20 @@ pub const MILESTONE_STATUS: &str = "MILESTONE_STATUS";
 pub const NULLIFIER_MAP: &str = "NULLIFIER_MAP";
 pub const COMMITMENT_STORAGE: &str = "COMMITMENT_STORAGE";
 pub const PRIVACY_CLAIM_HISTORY: &str = "PRIVACY_CLAIM_HISTORY";
+// ========== ZK Verification Key (Groth16 / BN254) ==========
+/// Storage key for the Groth16 verifying key used by private_claim.
+pub const ZK_VERIFICATION_KEY: &str = "ZK_VERIFICATION_KEY";
+
+/// Read the configured Groth16 verifying key, if any.
+pub fn get_zk_verification_key(e: &Env) -> Option<crate::types::ZkVerificationKey> {
+    e.storage().instance().get(&ZK_VERIFICATION_KEY)
+}
+
+/// Store the Groth16 verifying key used to verify private-claim proofs.
+pub fn set_zk_verification_key(e: &Env, vk: &crate::types::ZkVerificationKey) {
+    e.storage().instance().set(&ZK_VERIFICATION_KEY, vk);
+}
+
 pub const MERKLE_ROOTS: &str = "MERKLE_ROOTS";
 
 // Stellar Horizon Path Payment Claim storage keys
