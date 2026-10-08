@@ -462,6 +462,17 @@ pub fn set_oracle_price_record(e: &Env, record: &crate::types::OraclePriceRecord
     e.storage().instance().set(&ORACLE_PRICE_RECORD, record);
 }
 
+// ========== ISSUE #8: Native contract upgrade administration ==========
+pub const UPGRADE_ADMIN: &str = "UPGRADE_ADMIN";
+
+pub fn get_upgrade_admin(e: &Env) -> Option<Address> {
+    e.storage().instance().get(&UPGRADE_ADMIN)
+}
+
+pub fn set_upgrade_admin(e: &Env, admin: &Address) {
+    e.storage().instance().set(&UPGRADE_ADMIN, admin);
+}
+
 // ========== ISSUE #231: Total Unvested Balance (contract-wide) ==========
 pub const CONTRACT_TOTAL_UNVESTED: &str = "CONTRACT_TOTAL_UNVESTED";
 
