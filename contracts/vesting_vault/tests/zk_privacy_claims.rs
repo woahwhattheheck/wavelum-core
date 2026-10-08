@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use soroban_sdk::{Address, Env, BytesN, Symbol, String, IntoVal, Val, Error, Vec};
-use soroban_sdk::testutils::{Address as _, Ledger};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
 use vesting_vault::{VestingVault, VestingVaultClient};
 use vesting_vault::types::{Nullifier, ZKClaimProof, ZkVerificationKey};
 
