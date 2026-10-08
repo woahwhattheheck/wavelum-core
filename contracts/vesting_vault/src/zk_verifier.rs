@@ -276,10 +276,10 @@ impl ZKVerifier {
             bytes.iter().all(|&b| b == 0)
         };
         let is_zero_g1 = |bytes: &BytesN<64>| {
-            bytes.iter().all(|&b| b == 0)
+            bytes.iter().all(|b| b == 0)
         };
         let is_zero_g2 = |bytes: &BytesN<128>| {
-            bytes.iter().all(|&b| b == 0)
+            bytes.iter().all(|b| b == 0)
         };
 
         // Proof components should not be all zeros
