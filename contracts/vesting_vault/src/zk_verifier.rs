@@ -273,7 +273,7 @@ impl ZKVerifier {
     fn verify_proof_structure(proof: &ConfidentialClaimProof) -> bool {
         // Check that proof components are non-zero
         let is_zero = |bytes: &BytesN<32>| {
-            bytes.iter().all(|&b| b == 0)
+            bytes.iter().all(|b| b == 0)
         };
         let is_zero_g1 = |bytes: &BytesN<64>| {
             bytes.iter().all(|b| b == 0)
