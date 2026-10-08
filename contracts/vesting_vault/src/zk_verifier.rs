@@ -134,8 +134,7 @@ impl ZKVerifier {
             pos /= 2;
         }
 
-        computed == *root
-    }
+        // Every position bit must be consumed by the supplied proof depth.\n        // Otherwise positions that differ only above that depth (for example\n        // 0 and 2 for a one-sibling proof) would verify as the same leaf.\n        pos == 0 && computed == *root\n    }
 
     /// Verify the basic structure of the ZK proof
     /// 
