@@ -69,6 +69,7 @@ fn valid_proof_data(env: &Env) -> soroban_sdk::Bytes {
 #[test]
 fn test_create_commitment() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
     
@@ -101,6 +102,7 @@ fn test_create_commitment() {
 #[test]
 fn test_nullifier_prevention() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
     
@@ -113,6 +115,7 @@ fn test_nullifier_prevention() {
 #[test]
 fn test_merkle_root_management() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
     
@@ -142,6 +145,7 @@ fn test_merkle_root_management() {
 #[test]
 fn test_private_claim_flow() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
     
@@ -186,6 +190,7 @@ fn test_private_claim_flow() {
 #[test]
 fn test_private_claim_double_spending_prevention() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
     
@@ -228,6 +233,7 @@ fn test_private_claim_double_spending_prevention() {
 #[test]
 fn test_emergency_pause_with_private_claims() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
     
@@ -279,6 +285,7 @@ fn test_emergency_pause_with_private_claims() {
 fn test_private_claim_rejects_invalid_proof() {
     // b = infinity removes the -A,B cancellation: product = e(G1,G2) != 1.
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
 
@@ -321,6 +328,7 @@ fn test_private_claim_rejects_invalid_proof() {
 #[test]
 fn test_private_claim_rejects_malformed_proof_data() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
 
@@ -355,6 +363,7 @@ fn test_private_claim_rejects_malformed_proof_data() {
 #[test]
 fn test_private_claim_fails_closed_without_verification_key() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
 
@@ -388,6 +397,7 @@ fn test_private_claim_fails_closed_without_verification_key() {
 #[test]
 fn test_private_claim_rejects_nullifier_mismatch() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
 
@@ -421,6 +431,7 @@ fn test_private_claim_rejects_nullifier_mismatch() {
 #[test]
 fn test_set_zk_verification_key_validates_ic_length() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(VestingVault, ());
     let client = VestingVaultClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
