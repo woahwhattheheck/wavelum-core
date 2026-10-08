@@ -164,6 +164,75 @@ fn batch_schedule_claim_respects_cliff_and_linear_vesting() {
 }
 
 #[test]
+fn alternate_claim_paths_enforce_batch_schedule_bounds() {
+    let (env, admin, client) = setup();
+    let beneficiary = Address::generate(&env);
+    let start_time = env.ledger().timestamp();
+    let schedules = Vec::from_array(
+        &env,
+        [ScheduleParams {
+            beneficiary: beneficiary.clone(),
+            amount: 1_000,
+            cliff: 100,
+            duration: 1_000,
+            start_time,
+        }],
+    );
+
+    let result = client.batch_create_schedules(&admin, &schedules).unwrap();
+    let vesting_id = result.results.get(0).unwrap().vesting_id.unwrap();
+
+    client
+        .configure_path_payment(
+            &admin,
+            &Address::generate(&env),
+            &1,
+            &Vec::new(&env),
+        )
+        .unwrap();
+    let before_cliff =
+        client.try_claim_with_path_payment(&beneficiary, &vesting_id, &1, &None);
+    assert_eq!(
+        before_cliff,
+        Err(Ok(vesting_vault::errors::Error::CliffNotReached))
+    );
+
+    env.ledger().set_timestamp(start_time + 1_000);
+    client
+        .configure_lockup(
+            &admin,
+            &vesting_id,
+            &60,
+            &Address::generate(&env),
+        )
+        .unwrap();
+    client
+        .claim_with_lockup(&beneficiary, &vesting_id, &500)
+        .unwrap();
+
+    assert_eq!(
+        client
+            .get_batch_schedule_info(&vesting_id)
+            .unwrap()
+            .claimed_amount,
+        500
+    );
+
+    let over_vested = client.try_claim_with_lockup(&beneficiary, &vesting_id, &501);
+    assert_eq!(
+        over_vested,
+        Err(Ok(vesting_vault::errors::Error::InvalidAmount))
+    );
+
+    let other_user = Address::generate(&env);
+    let wrong_beneficiary = client.try_claim_with_lockup(&other_user, &vesting_id, &1);
+    assert_eq!(
+        wrong_beneficiary,
+        Err(Ok(vesting_vault::errors::Error::UnauthorizedScheduleAccess))
+    );
+}
+
+#[test]
 fn invalid_item_does_not_abort_valid_neighbors() {
     let (env, admin, client) = setup();
     let schedules = Vec::from_array(
