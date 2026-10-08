@@ -128,17 +128,17 @@ fn batch_schedule_claim_respects_cliff_and_linear_vesting() {
     let vesting_id = result.results.get(0).unwrap().vesting_id.unwrap();
 
     let before_cliff = client.try_claim(&beneficiary, &vesting_id, &1);
-    assert_eq!(before_cliff, Err(Ok(vesting_vault::Error::CliffNotReached)));
+    assert_eq!(before_cliff, Err(Ok(vesting_vault::errors::Error::CliffNotReached)));
 
     env.ledger().set_timestamp(start_time + 500);
 
     // Half the duration has elapsed, so no more than 500 is vested.
     let over_vested = client.try_claim(&beneficiary, &vesting_id, &501);
-    assert_eq!(over_vested, Err(Ok(vesting_vault::Error::InvalidAmount)));
+    assert_eq!(over_vested, Err(Ok(vesting_vault::errors::Error::InvalidAmount)));
 
     client.claim(&beneficiary, &vesting_id, &500).unwrap();
     let no_more_vested = client.try_claim(&beneficiary, &vesting_id, &1);
-    assert_eq!(no_more_vested, Err(Ok(vesting_vault::Error::InvalidAmount)));
+    assert_eq!(no_more_vested, Err(Ok(vesting_vault::errors::Error::InvalidAmount)));
 
     env.ledger().set_timestamp(start_time + 1_000);
     client.claim(&beneficiary, &vesting_id, &500).unwrap();
