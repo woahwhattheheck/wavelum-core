@@ -44,6 +44,7 @@ use storage::{
     get_unvested_balance, set_unvested_balance,
     get_admin_dead_man_switch, set_admin_dead_man_switch,
     get_oracle_price_record, set_oracle_price_record,
+    get_upgrade_admin as storage_get_upgrade_admin, set_upgrade_admin,
     get_contract_total_unvested, set_contract_total_unvested,
     get_lockup_config, set_lockup_config, remove_lockup_config,
     get_token_supply_info, set_token_supply_info,
@@ -2411,6 +2412,65 @@ impl VestingVault {
         diff.checked_mul(10_000)
             .and_then(|v| v.checked_div(old_price))
             .unwrap_or(0) as u32
+    }
+
+    // ========== ISSUE #8: Native Soroban Contract Upgradeability ==========
+
+    /// Configure the address authorized to replace this contract's Wasm.
+    ///
+    /// This value is set once so later callers cannot replace the configured authority.
+    pub fn initialize_upgrade_admin(e: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+
+        if storage_get_upgrade_admin(&e).is_some() {
+            return Err(Error::AlreadyInitialized);
+        }
+
+        set_upgrade_admin(&e, &admin);
+        Ok(())
+    }
+
+    /// Return the configured native-upgrade administrator.
+    pub fn get_upgrade_admin(e: Env) -> Option<Address> {
+        storage_get_upgrade_admin(&e)
+    }
+
+    /// Replace the current contract Wasm while preserving the contract ID and storage.
+    ///
+    /// The existing issue-#231 safety invariant is enforced before replacement:
+    /// outstanding contract-wide unvested funds must be zero.
+    pub fn upgrade_logic_contract(
+        e: Env,
+        admin: Address,
+        wasm_hash: BytesN<32>,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+
+        let configured_admin = storage_get_upgrade_admin(&e).ok_or(Error::Unauthorized)?;
+        if configured_admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let total_unvested = get_contract_total_unvested(&e);
+        if total_unvested > 0 {
+            UpgradeBlocked {
+                total_unvested_balance: total_unvested,
+                blocked_at: e.ledger().timestamp(),
+            }
+            .publish(&e);
+            return Err(Error::UpgradeBlockedByUnvestedFunds);
+        }
+
+        e.deployer().update_current_contract_wasm(wasm_hash.clone());
+
+        ContractUpgraded {
+            admin,
+            wasm_hash,
+            upgraded_at: e.ledger().timestamp(),
+        }
+        .publish(&e);
+
+        Ok(())
     }
 
     // ========== ISSUE #231: Self-Destruct Prevention & Storage Locking ==========
