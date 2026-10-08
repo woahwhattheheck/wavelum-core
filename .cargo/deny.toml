@@ -10,15 +10,13 @@ version = 2
 db-urls = ["https://github.com/rustsec/advisory-db"]
 # A yanked release in the lockfile is a hard failure.
 yanked = "deny"
-# Blocking threshold: advisories with CVSS severity high or critical fail
-# `cargo deny check advisories`; lower severities report as warnings.
-severity-threshold = "high"
+# Current cargo-deny treats every vulnerability advisory as an error.
+# This is stricter than the issue's required high/critical blocking floor.
 
 [licenses]
-# Permitted licenses. Anything detected but absent here is denied via
-# `default = "deny"`; the explicit deny list plus `copyleft = "deny"`
-# guarantee GPL/AGPL-family licenses are rejected even if a crate is
-# re-categorized or dual-licensed inconsistently.
+# Permitted licenses. Current cargo-deny denies every license that cannot be
+# satisfied by this allow-list, so GPL/AGPL-family licenses remain blocked
+# without legacy deny/default/copyleft policy keys.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -33,24 +31,9 @@ allow = [
     "CC0-1.0",
     "0BSD",
 ]
-deny = [
-    "GPL-2.0-only",
-    "GPL-2.0-or-later",
-    "GPL-3.0-only",
-    "GPL-3.0-or-later",
-    "AGPL-1.0-only",
-    "AGPL-1.0-or-later",
-    "AGPL-3.0-only",
-    "AGPL-3.0-or-later",
-]
-copyleft = "deny"
-default = "deny"
 confidence-threshold = 0.8
-# Workspace crates in this repository do not declare license metadata yet;
-# flag them as warnings rather than hard failures until license fields are
-# added to the member manifests. Unlicensed third-party crates are also
-# surfaced for review instead of silently passing.
-unlicensed = "warn"
+# Current cargo-deny has no legacy `unlicensed` policy switch. A dependency
+# without an allowed SPDX expression fails closed unless explicitly clarified.
 
 [bans]
 # Ban duplicate versions of the same crate in the resolved graph.
