@@ -114,6 +114,34 @@ fn test_private_claim_rejects_wrong_position() {
 }
 
 #[test]
+fn test_private_claim_rejects_position_above_proof_depth() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, VestingVault);
+    let client = VestingVaultClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let leaf0 = BytesN::from_array(&env, &[63u8; 32]);
+    let leaf1 = BytesN::from_array(&env, &[64u8; 32]);
+    let root = hash_pair(&env, &leaf0, &leaf1);
+    let nullifier = Nullifier { hash: BytesN::from_array(&env, &[65u8; 32]) };
+
+    client.create_commitment(&user, &1u32, &500i128, &leaf0);
+    client.add_merkle_root_admin(&admin, &root);
+
+    // With one sibling only bit 0 is meaningful. Position 2 has the same
+    // low bit as position 0, but names a leaf outside this proof depth.
+    let mut proof_vec = Vec::new(&env);
+    proof_vec.push_back(leaf1);
+    let proof = zk_proof(&env, &leaf0, &nullifier.hash, &root, proof_vec, 2);
+
+    let res = client.try_private_claim(&proof, &nullifier, &500i128);
+    assert_eq!(res, Err(Ok(Error::InvalidZKProof)));
+    assert!(!client.is_nullifier_used_public(&nullifier));
+}
+
+#[test]
 fn test_private_claim_rejects_unregistered_root() {
     let env = Env::default();
     env.mock_all_auths();
