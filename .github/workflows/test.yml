@@ -9,6 +9,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/**"
+      - "CHANGELOG.md"
   pull_request:
     branches: [ "main", "develop", "release/*" ]
     paths:
@@ -17,6 +18,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/**"
+      - "CHANGELOG.md"
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,6 +38,37 @@ jobs:
             exit 1
           fi
           echo "CONTRIBUTING.md exists"
+
+  changelog-check:
+    name: Validate CHANGELOG.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check CHANGELOG.md exists
+        run: |
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "ERROR: CHANGELOG.md not found"
+            exit 1
+          fi
+          echo "CHANGELOG.md exists"
+
+      - name: Check Unreleased section present
+        run: |
+          if ! grep -qE '^## \[Unreleased\]' CHANGELOG.md; then
+            echo "ERROR: CHANGELOG.md is missing an [Unreleased] section"
+            exit 1
+          fi
+          echo "[Unreleased] section present"
+
+      - name: Validate Keep a Changelog sections
+        run: |
+          if ! grep -qE '^#+ (Added|Changed|Deprecated|Removed|Fixed|Security)' CHANGELOG.md; then
+            echo "ERROR: CHANGELOG.md has no Keep a Changelog change sections"
+            echo "Expected at least one of: Added, Changed, Deprecated, Removed, Fixed, Security"
+            exit 1
+          fi
+          echo "Keep a Changelog sections present"
 
   validate-pr-title:
     name: Validate PR Title (Optional)
