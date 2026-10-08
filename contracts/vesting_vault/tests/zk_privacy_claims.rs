@@ -128,7 +128,7 @@ fn test_merkle_root_management() {
 
     // Verify the admin add operation is indexable.
     let events = env.events().all();
-    assert_eq!(events.len(), 1);
+    assert_eq!(events.events().len(), 1);
     
     // Test duplicate Merkle root should fail
     let result = env.try_invoke_contract::<Val, Error>(
@@ -256,7 +256,7 @@ fn test_emergency_pause_with_private_claims() {
 
     // Commitment, Merkle root, auditor init, two votes, and pause trigger.
     let events = env.events().all();
-    assert_eq!(events.len(), 6);
+    assert_eq!(events.events().len(), 6);
     
     // Create ZK proof
     let zk_proof = ZKClaimProof {
